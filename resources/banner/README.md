@@ -7,19 +7,21 @@ pipeline and its converter come from 3dsDL, whose banner went through five
 test builds on a console before it worked; the rules it learned are kept
 here unchanged.
 
-> **Status: being checked on a console.** Builds 0.2.0 and 0.2.1 each drew
+> **Status: being checked on a console.** Builds 0.2.0 to 0.2.2 each drew
 > their first frame and then froze the HOME Menu, the same symptom as
-> 3dsDL's third build. 0.2.2 gives the scene the exact shape of the 3dsDL
-> banner that works: 13 bones two levels deep, 10 meshes, 7 materials, and
-> every animated bone starting from the identity with its placement in its
-> tracks (see the rules below). `scripts/build.sh` packs the flat picture
-> instead when the CGFX is missing or `THREEDSFM_FLAT_BANNER=1`.
+> 3dsDL's third build, even after the scene was given the exact shape of the
+> 3dsDL banner that works. 0.2.3 keeps only what that banner proves: one
+> animated bone with the card's motion, flat parts under it, the billboard
+> wordmark and two stars. `scripts/build.sh` packs the flat picture instead
+> when the CGFX is missing or `THREEDSFM_FLAT_BANNER=1`.
 
-The scene is a glossy dark record with a Clearwater-blue label. It sways and
-spins while a tonearm swings in from the right and drops its needle at 0.7 s;
-the record squashes happily, three music notes pop out from under the needle
-and float off, and the 3dsFM wordmark floats in front, gently bobbing. Two
-small stars twinkle in the corners. The loop is four seconds long.
+The scene is a glossy dark record with a Clearwater-blue label. It sways
+from side to side, bobs, and squashes happily on the beat, while the 3dsFM
+wordmark floats in front and two small stars twinkle in the corners. The
+loop is four seconds long. (The tonearm, the spin and the burst of notes
+from the first builds are set aside until a banner with them is known to
+work on a console; the model is a few hundred lines of code, so they can
+come back one at a time.)
 
 The 48 × 48 HOME Menu icon, the flat fallback banner, the website's icons and
 the social image are rendered from the same model, so they always match.
@@ -95,4 +97,10 @@ Builds tried on a console:
 | --- | --- | --- |
 | 0.2.0 | 2,102 triangles, spin keyed every 0.05 s with a second sway, rig and arm bones carrying their own placement | Drew the first frame, then froze the HOME Menu |
 | 0.2.1 | 1,754 triangles and 1,844 vertices, plain spin keyed every 0.1 s, placement on unanimated parent bones (19 bones, four deep, 10 materials) | Drew the first frame, then froze the HOME Menu |
-| 0.2.2 | Same geometry on 13 bones two deep, 10 meshes, 7 materials, placement as constant keys | Being tested |
+| 0.2.2 | Same geometry on 13 bones two deep, 10 meshes, 7 materials, placement as constant keys | Drew the first frame, then froze the HOME Menu |
+| 0.2.3 | Record, wordmark and stars only: 8 bones, 5 meshes, 5 materials, 786 triangles, the card's motion from 3dsDL | Being tested |
+
+Also on the v0.2.2 release, for telling the model from the rest of the
+banner: `3dsFM-3dsdl-model.cia` packs 3dsDL's known-good CGFX with 3dsFM's
+jingle, and `3dsFM-3dsdl-jingle.cia` packs 3dsFM's 0.2.2 model with 3dsDL's
+jingle.

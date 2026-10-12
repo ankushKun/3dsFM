@@ -2,9 +2,9 @@
 """Builds 3dsFM's 3D HOME Menu banner as a binary glTF (banner.glb).
 
 The banner is what the 3DS shows on the top screen while 3dsFM is selected
-on the HOME Menu: a glossy dark record with a Clearwater-blue label, swaying
-and spinning, a tonearm that swings in and drops its needle, a happy squash
-and a burst of music notes, with the 3dsFM wordmark floating in front. Every shape is generated here, so the model can
+on the HOME Menu: a glossy dark record with a Clearwater-blue label that
+sways, bobs and squashes on the beat, with the 3dsFM wordmark floating in
+front and two stars. Every shape is generated here, so the model can
 be reviewed and changed as code, and needs no 3D editor.
 
 Units follow the HOME Menu banner camera (pycgfx's banner-camera.gltf): the
@@ -256,37 +256,6 @@ def label_fill():
     return merge((extrude(disc(1.3, 8), 0.12, 0.03), (0.0, 0.0, 0.86)))
 
 
-def spindle():
-    return merge((extrude(disc(0.34, 6), 0.5, 0.1), (0.0, 0.0, 0.95)))
-
-
-def arm():
-    """The tonearm, built around its pivot at the origin: a round base, the
-    arm reaching down-left to the needle, and the head."""
-    base = extrude(disc(1.25, 8), 1.2, 0.3)
-    shaft = rounded([(-0.5, -7.4), (0.5, -7.4), (0.5, 0.6), (-0.5, 0.6)], 0.3, 1)
-    head = rounded([(-1.1, -9.2), (1.1, -9.2), (1.1, -7.0), (-1.1, -7.0)], 0.45, 1)
-    needle = rounded([(-0.2, -9.9), (0.2, -9.9), (0.2, -9.0), (-0.2, -9.0)], 0.12, 1)
-    return merge(
-        (base, (0.0, 0.0, 0.3)),
-        (extrude(shaft, 0.7, 0.15), (0.0, 0.0, 0.5)),
-        (extrude(head, 1.0, 0.3), (0.0, 0.0, 0.45)),
-        (extrude(needle, 0.4, 0.08), (0.0, 0.0, 0.0)),
-    )
-
-
-def note():
-    """An eighth note: head, stem and a flag, as one solid."""
-    head = [(0.95 * math.cos(a) - 0.0, 0.62 * math.sin(a) - 0.0) for a in [2 * math.pi * k / 6 + 0.5 for k in range(6)]]
-    stem = rounded([(0.55, -0.1), (1.05, -0.1), (1.05, 3.2), (0.55, 3.2)], 0.22, 2)
-    flag = rounded([(0.75, 3.2), (1.35, 3.2), (2.55, 1.9), (2.55, 1.0), (1.3, 2.25), (0.75, 2.4)], [0.18, 0.3, 0.3, 0.4, 0.3, 0.2], 1)
-    return merge(
-        (extrude(head, 0.6, 0.16), (0.0, 0.0, 0.0)),
-        (extrude(stem, 0.5, 0.08), (0.0, 0.0, 0.0)),
-        (extrude(flag, 0.5, 0.08), (0.0, 0.0, 0.0)),
-    )
-
-
 def star(outer, inner, points=5):
     corners = []
     for k in range(points * 2):
@@ -337,53 +306,17 @@ def wave(t, period=LOOP, phase=0.0):
 
 
 def record_tracks():
-    """Placement, sway, spin, bob and the happy squash when the needle
-    lands, on one bone, like the card in the 3dsDL banner. The placement is
-    a constant part of every track rather than a transform of the bone's
-    own, which is how every animated bone in that banner is built."""
-    # The spin is about the record's own axis, inside the sway: the tilt
-    # stays put while the disc turns, as it did with the sway on a parent.
-    rotation = sampled(lambda t: quat_mul(
-        euler_quat(math.radians(-8), math.radians(16) * wave(t), 0),
-        euler_quat(0, 0, math.radians(360.0 * t / LOOP))))
+    """Sways from side to side and bobs, with a happy squash on the beat,
+    the card's motion in the 3dsDL banner. The placement is a constant part
+    of every track rather than a transform of the bone's own, which is how
+    every animated bone in that banner is built."""
+    rotation = sampled(lambda t: euler_quat(math.radians(-8), math.radians(18) * wave(t), math.radians(3) * wave(t, phase=1.2)))
     squash = [
         (0.0, (1, 1, 1)), (0.7, (1, 1, 1)), (0.8, (1.07, 0.92, 1.07)), (0.95, (0.95, 1.06, 0.95)),
         (1.1, (1.02, 0.98, 1.02)), (1.25, (1, 1, 1)), (LOOP, (1, 1, 1)),
     ]
     scale = [(t, tuple(RECORD_SCALE * v for v in sc)) for t, sc in squash]
     translation = sampled(lambda t: (RECORD_AT[0], RECORD_AT[1] + 0.25 * wave(t, phase=math.pi / 2), RECORD_AT[2]))
-    return translation, rotation, scale
-
-
-def arm_track():
-    """Swings in from the side, lands the needle on the record with a small
-    bounce at 0.7 s, rests, then lifts away before the loop ends."""
-    angles = [
-        (0.0, 52.0), (0.3, 52.0), (0.55, 10.0), (0.7, 0.0), (0.78, 4.0), (0.88, 0.0),
-        (3.55, 0.0), (3.9, 52.0), (LOOP, 52.0),
-    ]
-    rotation = [(t, euler_quat(0, 0, math.radians(a))) for t, a in angles]
-    return [(0.0, ARM_AT), (LOOP, ARM_AT)], rotation, [(0.0, (RECORD_SCALE,) * 3), (LOOP, (RECORD_SCALE,) * 3)]
-
-
-def placed(local):
-    """A point given in record units, in banner units."""
-    return tuple(RECORD_AT[i] + RECORD_SCALE * local[i] for i in range(3))
-
-
-ARM_AT = placed((6.6, 5.4, 1.4))
-
-
-def note_tracks(start, end, size, delay, spin):
-    """Pops out from under the needle, floats up and away while turning,
-    shrinks a little, then waits tucked behind the record until the next
-    landing."""
-    t0 = 0.95 + delay
-    tucked = placed((0.0, 0.0, -1.4))
-    small = (0.35,) * 3
-    translation = [(0.0, tucked), (t0, tucked), (t0 + 0.12, start), (t0 + 0.75, end), (t0 + 0.9, end), (t0 + 0.91, tucked), (LOOP, tucked)]
-    scale = [(0.0, small), (t0, small), (t0 + 0.18, (size * 1.15,) * 3), (t0 + 0.6, (size,) * 3), (t0 + 0.9, (0.3,) * 3), (t0 + 0.91, small), (LOOP, small)]
-    rotation = [(0.0, euler_quat(0, 0, 0)), (t0, euler_quat(0, 0, math.radians(-spin * 0.3))), (t0 + 0.9, euler_quat(0, 0, math.radians(spin))), (t0 + 0.91, euler_quat(0, 0, 0)), (LOOP, euler_quat(0, 0, 0))]
     return translation, rotation, scale
 
 
@@ -542,40 +475,21 @@ class Gltf:
 def build(logo_png, out_path, static=None):
     g = Gltf(static)
     vinyl = g.material("Vinyl", (0.15, 0.17, 0.2), 0.25)
-    groove_mat = g.material("Groove", (0.3, 0.33, 0.38), 0.35)
     label_mat = g.material("Label", (0.23, 0.59, 0.92), 0.3)
     light_blue = g.material("LightBlue", (0.56, 0.82, 1.0), 0.3)
-    arm_mat = g.material("Arm", (0.93, 0.95, 0.97), 0.3)
     yellow = g.material("Yellow", (1.0, 0.8, 0.18), 0.3)
     logo = g.material("Logo", (1.0, 1.0, 1.0), 1.0, texture=g.texture(logo_png))
 
     root = g.node("Banner")
 
-    # The scene has the shape of the 3dsDL banner that works on a console:
-    # fourteen bones at most three deep, seven materials, and animated
-    # bones that start from the identity and carry their placement in their
-    # tracks. The record spins and sways on one bone; its parts hang under
-    # it with no transform of their own.
+    # Only what the 3dsDL banner proves works on a console: one animated
+    # bone with the card's motion, flat parts under it, a billboard wordmark
+    # and two stars. Seven bones two deep, five meshes, five materials.
     rec = g.node("Record", parent=root)
     g.animate(rec, *record_tracks())
     g.node("RecordBody", g.mesh("RecordBody", merge((record(), (0, 0, 0)), (groove_fill(), (0, 0, 0))), vinyl), parent=rec)
-    g.node("RecordGroove", g.mesh("RecordGroove", groove(), groove_mat), parent=rec)
     g.node("RecordLabel", g.mesh("RecordLabel", merge((label(), (0, 0, 0)), (label_fill(), (0, 0, 0))), label_mat), parent=rec)
-    g.node("RecordRing", g.mesh("RecordRing", merge((label_ring(), (0, 0, 0)), (spindle(), (0, 0, 0))), light_blue), parent=rec)
-
-    # The tonearm swings about its pivot, placed by a constant track.
-    tonearm = g.node("Arm", g.mesh("Arm", arm(), arm_mat), parent=root)
-    g.animate(tonearm, *arm_track())
-
-    # Notes burst out from under the needle and float off in three
-    # directions; positions are given in record units.
-    for k, (material, start, end, size, delay, spin) in enumerate([
-        (light_blue, (2.2, -1.8, 1.6), (5.4, 7.2, 2.2), 1.1, 0.0, 70),
-        (yellow, (1.6, -2.2, 1.6), (-2.6, 8.6, 2.4), 0.95, 0.07, -80),
-        (light_blue, (2.6, -2.6, 1.6), (8.8, 2.8, 2.0), 0.8, 0.14, 55),
-    ]):
-        node = g.node("Note%d" % (k + 1), g.mesh("Note%d" % (k + 1), note(), material), parent=root)
-        g.animate(node, *note_tracks(placed(start), placed(end), size * RECORD_SCALE, delay, spin))
+    g.node("RecordRing", g.mesh("RecordRing", merge((label_ring(), (0, 0, 0)), (groove(), (0, 0, 0))), light_blue), parent=rec)
 
     wordmark = g.node("Logo", g.mesh("Logo", plane(23.0, 11.5), logo), parent=root)
     g.animate(wordmark, *logo_tracks())

@@ -149,9 +149,9 @@ if (mode === "frames") {
     }
   }));
 } else if (mode === "icon") {
-  // The icon: the record with the needle down and two notes mid-flight.
+  // The icon: the record, close up.
   at(parseFloat(params.get("t") || "1.25"));
-  for (const name of ["Logo", "Twinkle1", "Twinkle2", "Note3"]) named(name).visible = false;
+  for (const name of ["Logo", "Twinkle1", "Twinkle2"]) named(name).visible = false;
   gltf.scene.updateMatrixWorld(true);
   const size = parseInt(params.get("size") || "384", 10);
   const card = named("Record");
