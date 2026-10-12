@@ -209,3 +209,69 @@ TEST("a playlist mosaic skips songs whose covers are the same picture")
         CHECK_EQ(lib.tracks()[a.mosaicTracks[1]].artist, std::string("C"));
     }
 }
+
+TEST("the index round-trips tracks and a rescan takes known files from it")
+{
+    FakeFs fs = sampleFs();
+    Library first = scanned(fs);
+    const std::string text = encodeIndex(first.tracks());
+    std::vector<Track> known;
+    CHECK(decodeIndex(text, known));
+    CHECK_EQ(known.size(), first.tracks().size());
+    for (size_t i = 0; i < known.size(); ++i) {
+        CHECK_EQ(known[i].path, first.tracks()[i].path);
+        CHECK_EQ(known[i].title, first.tracks()[i].title);
+        CHECK_EQ(known[i].albumKey, first.tracks()[i].albumKey);
+        CHECK_EQ(known[i].artHash, first.tracks()[i].artHash);
+        CHECK_EQ(known[i].durationSeconds, first.tracks()[i].durationSeconds);
+    }
+
+    // A second scan with the index reads no tags for files it knows; a new
+    // file still gets read, and a removed one disappears.
+    fs.dirs["sdmc:/Music/Loose"] = {{"untagged tone.wav", false}, {"10 New.mp3", false}};
+    fs.tags["sdmc:/Music/Loose/10 New.mp3"] = tag("Brand New", "Someone", "Loose", 10, 100);
+    int reads = 0;
+    TagReader counting = [&](const std::string &path, Format f, Tags &out) {
+        ++reads;
+        return fs.reader()(path, f, out);
+    };
+    Library second;
+    second.collect("sdmc:/Music", fs.lister());
+    second.useIndex(known);
+    while (second.step(counting, 3)) {
+    }
+    second.build();
+    CHECK_EQ(reads, 1);
+    CHECK_EQ(second.reusedCount(), 4);
+    CHECK_EQ(second.tracks().size(), size_t(5));
+    bool sawNew = false;
+    bool sawRemoved = false;
+    for (const Track &t : second.tracks()) {
+        if (t.title == "Brand New") sawNew = true;
+        if (t.path.find("Another.opus") != std::string::npos) sawRemoved = true;
+    }
+    CHECK(sawNew);
+    CHECK(!sawRemoved);
+    // The reused album still groups and keeps its year and cover.
+    const Album *pocket = nullptr;
+    for (const Album &a : second.albums()) {
+        if (a.title == "Pocket Park") pocket = &a;
+    }
+    CHECK(pocket != nullptr);
+    CHECK_EQ(pocket->tracks.size(), size_t(3));
+    CHECK_EQ(pocket->year, std::string("1980"));
+    CHECK(!pocket->artPath.empty());
+}
+
+TEST("a corrupt index is rejected and a field with a tab survives")
+{
+    std::vector<Track> out;
+    CHECK(!decodeIndex("not an index\n", out));
+    Track t;
+    t.path = "sdmc:/Music/A/1.mp3";
+    t.title = "Tab\there";
+    t.albumKey = "a|b";
+    CHECK(decodeIndex(encodeIndex({t}), out));
+    CHECK_EQ(out.size(), size_t(1));
+    CHECK_EQ(out[0].title, std::string("Tab here"));
+}

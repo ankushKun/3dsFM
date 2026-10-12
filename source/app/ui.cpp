@@ -142,21 +142,25 @@ std::map<std::string, MarqueeState> marquees;
 uint32_t marqueeFrame = 0;
 // `size` is meant as the visual height of a line of text (cap height plus a
 // little), so the scale is derived from each font's own line height.
+// Every size the screens ask for is enlarged by TextScale: the layouts were
+// drawn against 2x mockups, and on a console the text came out too small
+// to read comfortably at arm's length.
+constexpr float TextScale = 1.2f;
 C2D_Font fontFor(Weight weight, float size)
 {
     if (useSystemFont) return nullptr;
-    if (size < SmallCutoff) return weight == Weight::Bold ? fontBoldSmall : fontRegularSmall;
+    if (size * TextScale < SmallCutoff) return weight == Weight::Bold ? fontBoldSmall : fontRegularSmall;
     return weight == Weight::Bold ? fontBold : fontRegular;
 }
 float lineHeightFor(Weight weight, float size)
 {
     if (useSystemFont) return 30.0f;
-    if (size < SmallCutoff) return weight == Weight::Bold ? lineHeightBoldSmall : lineHeightRegularSmall;
+    if (size * TextScale < SmallCutoff) return weight == Weight::Bold ? lineHeightBoldSmall : lineHeightRegularSmall;
     return weight == Weight::Bold ? lineHeightBold : lineHeightRegular;
 }
 float scaleFor(float size, Weight weight)
 {
-    return size * 1.3f / lineHeightFor(weight, size);
+    return size * TextScale * 1.3f / lineHeightFor(weight, size);
 }
 
 std::string ellipsize(const std::string &s, float size, float maxWidth, Weight weight)
@@ -331,7 +335,7 @@ void text(const std::string &s, float x, float y, float size, u32 color, Align a
     }
     // Centre the glyphs on the requested pixel height.
     const float lineHeight = lineHeightFor(weight, size) * scale;
-    const float top = y - (lineHeight - size) / 2.0f;
+    const float top = y - (lineHeight - size * TextScale) / 2.0f;
     C2D_DrawText(&t, C2D_WithColor, drawX, top, 0.5f, scale, scale, color);
 }
 

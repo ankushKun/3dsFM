@@ -117,8 +117,12 @@ int parseLeadingInt(const std::string &s)
 }
 
 // Returns the size of the ID3v2 tag at the start of the file (0 if none) and
-// fills tags from its frames.
-uint32_t readId3v2(ByteSource &source, Tags &tags, bool wantPicture, bool wantText)
+// fills tags from its frames. Frames are read one at a time, so a tag that
+// carries a large cover costs only the frames that are wanted: text frames
+// are small, and a picture is read up to pictureLimit bytes. (A v2.3 tag
+// unsynchronised as a whole has to be undone across frame boundaries, so
+// that rare case reads the whole tag.)
+uint32_t readId3v2(ByteSource &source, Tags &tags, bool wantPicture, bool wantText, size_t pictureLimit)
 {
     uint8_t header[10];
     if (source.read(0, header, 10) != 10 || std::memcmp(header, "ID3", 3) != 0) return 0;
@@ -129,27 +133,50 @@ uint32_t readId3v2(ByteSource &source, Tags &tags, bool wantPicture, bool wantTe
     if (major < 3 || major > 4 || size == 0) return total;
 
     constexpr uint32_t MaxTag = 8u * 1024u * 1024u;
-    std::vector<uint8_t> body = readAll(source, 10, std::min(size, MaxTag));
-    if ((flags & 0x80) && major == 3) body = deunsync(body.data(), body.size());
+    const bool unsyncWhole = (flags & 0x80) && major == 3;
+    std::vector<uint8_t> body;
+    if (unsyncWhole) {
+        body = readAll(source, 10, std::min(size, MaxTag));
+        body = deunsync(body.data(), body.size());
+    }
+    const uint64_t limit = unsyncWhole ? body.size() : std::min(size, MaxTag);
+    auto fetch = [&](uint64_t at, size_t n) {
+        if (!unsyncWhole) return readAll(source, 10 + at, n);
+        const size_t got = at >= body.size() ? 0 : std::min<size_t>(n, body.size() - size_t(at));
+        return std::vector<uint8_t>(body.begin() + long(at), body.begin() + long(at + got));
+    };
 
-    size_t pos = 0;
+    uint64_t pos = 0;
     if (flags & 0x40) {
-        if (body.size() < 4) return total;
-        const uint32_t extSize = major == 4 ? syncsafe(body.data()) : be32(body.data()) + 4;
-        pos = std::min<size_t>(extSize, body.size());
+        const std::vector<uint8_t> ext = fetch(0, 4);
+        if (ext.size() < 4) return total;
+        const uint32_t extSize = major == 4 ? syncsafe(ext.data()) : be32(ext.data()) + 4;
+        pos = std::min<uint64_t>(extSize, limit);
     }
 
-    while (pos + 10 <= body.size()) {
-        const uint8_t *f = body.data() + pos;
-        if (f[0] == 0) break;
-        const std::string id(reinterpret_cast<const char *>(f), 4);
-        uint32_t frameSize = major == 4 ? syncsafe(f + 4) : be32(f + 4);
+    while (pos + 10 <= limit) {
+        const std::vector<uint8_t> f = fetch(pos, 10);
+        if (f.size() < 10 || f[0] == 0) break;
+        const std::string id(reinterpret_cast<const char *>(f.data()), 4);
+        const uint32_t frameSize = major == 4 ? syncsafe(f.data() + 4) : be32(f.data() + 4);
         const uint16_t frameFlags = uint16_t((f[8] << 8) | f[9]);
         pos += 10;
-        if (frameSize == 0 || pos + frameSize > body.size()) break;
-        std::vector<uint8_t> frame;
-        const uint8_t *data = body.data() + pos;
-        size_t n = frameSize;
+        if (frameSize == 0 || pos + frameSize > limit) break;
+        const uint64_t frameStart = pos;
+        pos += frameSize;
+
+        const bool isText = wantText && id[0] == 'T' && id != "TXXX";
+        const bool isPicture = wantPicture && id == "APIC" && tags.picture.empty();
+        if (!isText && !isPicture) continue;
+
+        // A picture frame starts with a mime type and a description before
+        // the bytes, so read a little more than the sample itself.
+        size_t want = frameSize;
+        if (isPicture && pictureLimit < frameSize) want = std::min<size_t>(frameSize, pictureLimit + 1024);
+        std::vector<uint8_t> frame = fetch(frameStart, want);
+        const uint8_t *data = frame.data();
+        size_t n = frame.size();
+        size_t overhead = 0; // bytes of the frame that are not picture data
         if (major == 4 && (frameFlags & 0x02)) {
             frame = deunsync(data, n);
             data = frame.data();
@@ -158,10 +185,10 @@ uint32_t readId3v2(ByteSource &source, Tags &tags, bool wantPicture, bool wantTe
         if (major == 4 && (frameFlags & 0x01) && n >= 4) {
             data += 4;
             n -= 4;
+            overhead += 4;
         }
-        pos += frameSize;
 
-        if (wantText && id[0] == 'T' && id != "TXXX" && n >= 1) {
+        if (isText && n >= 1) {
             const std::string text = decodeText(data + 1, n - 1, data[0]);
             if (id == "TIT2") tags.title = text;
             else if (id == "TPE1") tags.artist = text;
@@ -169,7 +196,7 @@ uint32_t readId3v2(ByteSource &source, Tags &tags, bool wantPicture, bool wantTe
             else if (id == "TALB") tags.album = text;
             else if (id == "TYER" || id == "TDRC" || id == "TDRL") { if (tags.year.empty()) tags.year = text.substr(0, 4); }
             else if (id == "TRCK") tags.track = parseLeadingInt(text);
-        } else if (wantPicture && id == "APIC" && n >= 4 && tags.picture.empty()) {
+        } else if (isPicture && n >= 4) {
             const int encoding = data[0];
             size_t i = 1;
             std::string mime;
@@ -184,7 +211,9 @@ uint32_t readId3v2(ByteSource &source, Tags &tags, bool wantPicture, bool wantTe
             // Prefer the front cover (3) but take whatever comes first.
             if (tags.picture.empty() || pictureType == 3) {
                 tags.picture.mime = lower(mime);
-                tags.picture.data.assign(data + i, data + n);
+                const size_t available = n - i;
+                tags.picture.data.assign(data + i, data + i + std::min(available, pictureLimit));
+                tags.pictureBytes = frameSize > overhead + i ? frameSize - overhead - i : available;
             }
         }
     }
@@ -353,6 +382,7 @@ void parseVorbisComment(const std::vector<uint8_t> &c, size_t pos, Tags &tags, b
             if (p + dataLen > block.size()) continue;
             tags.picture.mime = lower(mime);
             tags.picture.data.assign(block.begin() + p, block.begin() + p + dataLen);
+            tags.pictureBytes = dataLen;
         }
     }
 }
@@ -480,7 +510,7 @@ bool readTags(ByteSource &source, Format format, Tags &out)
 {
     switch (format) {
     case Format::Mp3: {
-        const uint32_t tagSize = readId3v2(source, out, true, true);
+        const uint32_t tagSize = readId3v2(source, out, true, true, PictureSample);
         readId3v1(source, out);
         readMp3Duration(source, tagSize, out);
         return true;
@@ -499,7 +529,7 @@ bool readPicture(ByteSource &source, Format format, Picture &out)
 {
     Tags tags;
     switch (format) {
-    case Format::Mp3: readId3v2(source, tags, true, false); break;
+    case Format::Mp3: readId3v2(source, tags, true, false, SIZE_MAX); break;
     case Format::OggVorbis:
     case Format::Opus: readOgg(source, tags, true, false); break;
     default: return false;

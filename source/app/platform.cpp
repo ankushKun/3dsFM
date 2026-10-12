@@ -25,6 +25,10 @@ struct FileSource : core::ByteSource {
     {
         file = std::fopen(path.c_str(), "rb");
         if (file != nullptr) {
+            // The default 1 KB stdio buffer turns every tag read into dozens
+            // of trips to the FS service; a bigger one makes a scan of a
+            // large library several times faster.
+            std::setvbuf(file, nullptr, _IOFBF, 32 * 1024);
             std::fseek(file, 0, SEEK_END);
             length = uint64_t(std::ftell(file));
         }
@@ -112,6 +116,31 @@ bool readWholeFile(const std::string &path, std::vector<uint8_t> &out, size_t ma
     if (source.file == nullptr || source.length > maxBytes) return false;
     out.resize(size_t(source.length));
     return source.read(0, out.data(), out.size()) == out.size();
+}
+
+bool readTextFile(const std::string &path, std::string &out)
+{
+    std::vector<uint8_t> bytes;
+    if (!readWholeFile(path, bytes, 16 * 1024 * 1024)) return false;
+    out.assign(bytes.begin(), bytes.end());
+    return true;
+}
+
+bool writeTextFile(const std::string &path, const std::string &text)
+{
+    // Written beside the target and renamed over it, so a power cut in the
+    // middle leaves the old file rather than half a new one.
+    const std::string temp = path + ".tmp";
+    FILE *f = std::fopen(temp.c_str(), "wb");
+    if (f == nullptr) return false;
+    const bool ok = std::fwrite(text.data(), 1, text.size(), f) == text.size();
+    std::fclose(f);
+    if (!ok) {
+        std::remove(temp.c_str());
+        return false;
+    }
+    std::remove(path.c_str());
+    return std::rename(temp.c_str(), path.c_str()) == 0;
 }
 
 bool fileExists(const std::string &path)

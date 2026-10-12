@@ -18,6 +18,10 @@ std::vector<core::Entry> listDirectory(const std::string &path);
 bool readTagsFromFile(const std::string &path, core::Format format, core::Tags &out);
 bool readPictureFromFile(const std::string &path, core::Format format, core::Picture &out);
 bool readWholeFile(const std::string &path, std::vector<uint8_t> &out, size_t maxBytes);
+bool readTextFile(const std::string &path, std::string &out);
+bool writeTextFile(const std::string &path, const std::string &text);
+// The library index, see core::encodeIndex.
+constexpr const char *IndexPath = "sdmc:/3ds/3dsFM/library.idx";
 bool fileExists(const std::string &path);
 void makeDirectories(const std::string &path);
 

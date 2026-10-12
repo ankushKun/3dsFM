@@ -1,6 +1,8 @@
 #include "library.hpp"
 
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <map>
 
 namespace core {
@@ -84,7 +86,9 @@ bool naturalLess(const std::string &a, const std::string &b)
 void Library::clear()
 {
     pending_.clear();
+    index_.clear();
     scanned_ = 0;
+    reused_ = 0;
     tracks_.clear();
     albums_.clear();
     looseCovers_.clear();
@@ -118,52 +122,157 @@ void Library::collect(const std::string &root, const Lister &lister)
     }
 }
 
+void Library::useIndex(const std::vector<Track> &known)
+{
+    index_.clear();
+    for (const Track &t : known) index_[t.path] = t;
+}
+
 bool Library::step(const TagReader &reader, int count)
 {
     for (int i = 0; i < count && scanned_ < int(pending_.size()); ++i, ++scanned_) {
         const Pending &p = pending_[scanned_];
-        Tags tags;
-        reader(p.path, p.format, tags);
-
         Track t;
-        t.path = p.path;
-        t.format = p.format;
-        t.durationSeconds = tags.durationSeconds;
-        t.trackNumber = tags.track;
-        t.hasEmbeddedArt = !tags.picture.empty();
-        t.artHash = hashBytes(tags.picture.data.data(), tags.picture.data.size());
+        const auto known = index_.find(p.path);
+        if (known != index_.end()) {
+            t = known->second;
+            t.format = p.format;
+            ++reused_;
+        } else {
+            Tags tags;
+            reader(p.path, p.format, tags);
 
-        int numberFromName = 0;
-        const std::string stemTitle = stripLeadingNumber(fileStem(p.fileName), numberFromName);
-        t.title = tags.title.empty() ? stemTitle : tags.title;
-        if (t.trackNumber == 0) t.trackNumber = numberFromName;
+            t.path = p.path;
+            t.format = p.format;
+            t.durationSeconds = tags.durationSeconds;
+            t.trackNumber = tags.track;
+            t.hasEmbeddedArt = !tags.picture.empty();
+            t.artHash = hashBytes(tags.picture.data.data(), tags.picture.data.size());
+            if (t.artHash != 0 && tags.pictureBytes != 0) t.artHash ^= tags.pictureBytes * 1099511628211ull;
+            t.year = tags.year;
 
-        const std::string folderName = baseName(p.folder);
-        const std::string parentName = baseName(parentFolder(p.folder));
-        t.album = tags.album.empty() ? folderName : tags.album;
-        t.artist = tags.artist.empty() ? (parentName.empty() ? "Unknown artist" : parentName) : tags.artist;
-        const std::string albumArtist = tags.albumArtist.empty() ? t.artist : tags.albumArtist;
-        // Albums are grouped by name and folder, so two albums with the same
-        // title by different artists in different folders stay apart, and a
-        // compilation in one folder stays together.
-        t.albumKey = toLowerAscii(t.album) + "|" + toLowerAscii(tags.album.empty() ? p.folder : albumArtist);
+            int numberFromName = 0;
+            const std::string stemTitle = stripLeadingNumber(fileStem(p.fileName), numberFromName);
+            t.title = tags.title.empty() ? stemTitle : tags.title;
+            if (t.trackNumber == 0) t.trackNumber = numberFromName;
+
+            const std::string folderName = baseName(p.folder);
+            const std::string parentName = baseName(parentFolder(p.folder));
+            t.album = tags.album.empty() ? folderName : tags.album;
+            t.artist = tags.artist.empty() ? (parentName.empty() ? "Unknown artist" : parentName) : tags.artist;
+            t.albumArtist = tags.albumArtist.empty() ? t.artist : tags.albumArtist;
+            // Albums are grouped by name and folder, so two albums with the same
+            // title by different artists in different folders stay apart, and a
+            // compilation in one folder stays together.
+            t.albumKey = toLowerAscii(t.album) + "|" + toLowerAscii(tags.album.empty() ? p.folder : t.albumArtist);
+        }
         tracks_.push_back(std::move(t));
 
         // Remember the album's folder and year while we have the tags.
-        const int index = albumIndex(tracks_.back().albumKey);
+        const Track &track = tracks_.back();
+        const int index = albumIndex(track.albumKey);
         if (index < 0) {
             Album a;
-            a.key = tracks_.back().albumKey;
-            a.title = tracks_.back().album;
-            a.artist = albumArtist;
-            a.year = tags.year;
+            a.key = track.albumKey;
+            a.title = track.album;
+            a.artist = track.albumArtist;
+            a.year = track.year;
             a.folder = p.folder;
             albums_.push_back(std::move(a));
         } else if (albums_[index].year.empty()) {
-            albums_[index].year = tags.year;
+            albums_[index].year = track.year;
         }
     }
     return scanned_ < int(pending_.size());
+}
+
+// Index format: a header line, then one track per line with fields separated
+// by tabs (tabs and newlines inside a field become spaces). Fields: path,
+// format, title, artist, album, album artist, year, album key, track number,
+// duration, has embedded art, art hash (hex).
+namespace {
+
+const char *const IndexHeader = "3dsFM library index 1";
+
+std::string indexField(const std::string &s)
+{
+    std::string out = s;
+    for (char &c : out) {
+        if (c == '\t' || c == '\n' || c == '\r') c = ' ';
+    }
+    return out;
+}
+
+} // namespace
+
+std::string encodeIndex(const std::vector<Track> &tracks)
+{
+    std::string out = IndexHeader;
+    out += '\n';
+    char number[40];
+    for (const Track &t : tracks) {
+        out += indexField(t.path) + '\t';
+        out += std::to_string(int(t.format)) + '\t';
+        out += indexField(t.title) + '\t';
+        out += indexField(t.artist) + '\t';
+        out += indexField(t.album) + '\t';
+        out += indexField(t.albumArtist) + '\t';
+        out += indexField(t.year) + '\t';
+        out += indexField(t.albumKey) + '\t';
+        out += std::to_string(t.trackNumber) + '\t';
+        out += std::to_string(t.durationSeconds) + '\t';
+        out += (t.hasEmbeddedArt ? "1" : "0");
+        out += '\t';
+        std::snprintf(number, sizeof(number), "%llx", static_cast<unsigned long long>(t.artHash));
+        out += number;
+        out += '\n';
+    }
+    return out;
+}
+
+bool decodeIndex(const std::string &text, std::vector<Track> &out)
+{
+    out.clear();
+    size_t pos = 0;
+    auto nextLine = [&](std::string &line) {
+        if (pos >= text.size()) return false;
+        size_t end = text.find('\n', pos);
+        if (end == std::string::npos) end = text.size();
+        line = text.substr(pos, end - pos);
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        pos = end + 1;
+        return true;
+    };
+    std::string line;
+    if (!nextLine(line) || line != IndexHeader) return false;
+    while (nextLine(line)) {
+        if (line.empty()) continue;
+        std::vector<std::string> fields;
+        size_t start = 0;
+        while (true) {
+            const size_t tab = line.find('\t', start);
+            fields.push_back(line.substr(start, tab == std::string::npos ? std::string::npos : tab - start));
+            if (tab == std::string::npos) break;
+            start = tab + 1;
+        }
+        if (fields.size() != 12) continue;
+        Track t;
+        t.path = fields[0];
+        t.format = Format(std::atoi(fields[1].c_str()));
+        t.title = fields[2];
+        t.artist = fields[3];
+        t.album = fields[4];
+        t.albumArtist = fields[5];
+        t.year = fields[6];
+        t.albumKey = fields[7];
+        t.trackNumber = std::atoi(fields[8].c_str());
+        t.durationSeconds = std::atoi(fields[9].c_str());
+        t.hasEmbeddedArt = fields[10] == "1";
+        t.artHash = std::strtoull(fields[11].c_str(), nullptr, 16);
+        if (t.path.empty() || t.albumKey.empty()) continue;
+        out.push_back(std::move(t));
+    }
+    return true;
 }
 
 void Library::build()

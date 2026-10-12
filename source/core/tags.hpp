@@ -34,6 +34,11 @@ struct Picture {
     bool empty() const { return data.empty(); }
 };
 
+// readTags keeps at most this much of an embedded picture: enough to tell
+// covers apart by hash without reading every cover off the card. readPicture
+// reads the whole picture.
+constexpr size_t PictureSample = 64 * 1024;
+
 struct Tags {
     std::string title;
     std::string artist;
@@ -45,10 +50,14 @@ struct Tags {
     int sampleRate = 0;
     int channels = 0;
     Picture picture;
+    // The embedded picture's full size, even when picture.data holds only
+    // the first PictureSample bytes of it.
+    uint64_t pictureBytes = 0;
 };
 
 // Fills tags from the file. Returns false only when the file is not the
-// format it claims to be; missing tags are not an error.
+// format it claims to be; missing tags are not an error. The embedded
+// picture is sampled, see PictureSample.
 bool readTags(ByteSource &source, Format format, Tags &out);
 
 // Only the embedded picture, for lazy art loading.

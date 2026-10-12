@@ -1,6 +1,8 @@
 #include "../check.hpp"
 #include "tags.hpp"
 
+#include <algorithm>
+
 #include <cstring>
 #include <string>
 #include <vector>
@@ -34,7 +36,7 @@ std::vector<uint8_t> textFrame(const std::string &id, const std::string &text, i
     return frame;
 }
 
-std::vector<uint8_t> apicFrame(const std::string &mime, const std::vector<uint8_t> &data)
+std::vector<uint8_t> apicFrame(const std::string &mime, const std::vector<uint8_t> &data, int version = 3)
 {
     std::vector<uint8_t> body{0};
     putStr(body, mime);
@@ -44,7 +46,7 @@ std::vector<uint8_t> apicFrame(const std::string &mime, const std::vector<uint8_
     body.insert(body.end(), data.begin(), data.end());
     std::vector<uint8_t> frame;
     putStr(frame, "APIC");
-    put32be(frame, body.size());
+    if (version == 4) putSyncsafe(frame, body.size()); else put32be(frame, body.size());
     frame.push_back(0);
     frame.push_back(0);
     frame.insert(frame.end(), body.begin(), body.end());
@@ -143,6 +145,25 @@ TEST("ID3v2.4 syncsafe frame sizes and embedded front cover")
     Picture only;
     CHECK(readPicture(source, Format::Mp3, only));
     CHECK(only.data == png);
+}
+
+TEST("a big embedded cover is sampled by readTags and read whole by readPicture")
+{
+    std::vector<uint8_t> big(PictureSample + 5000);
+    for (size_t i = 0; i < big.size(); ++i) big[i] = uint8_t(i * 7);
+    std::vector<uint8_t> file = id3({apicFrame("image/jpeg", big, 4), textFrame("TIT2", "After the cover", 3, 4)}, 4);
+    const std::vector<uint8_t> audio = mp3Frames(10);
+    file.insert(file.end(), audio.begin(), audio.end());
+    MemorySource source(file);
+    Tags tags;
+    CHECK(readTags(source, Format::Mp3, tags));
+    CHECK_EQ(tags.title, std::string("After the cover"));
+    CHECK_EQ(tags.picture.data.size(), PictureSample);
+    CHECK(std::equal(tags.picture.data.begin(), tags.picture.data.end(), big.begin()));
+    CHECK_EQ(tags.pictureBytes, uint64_t(big.size()));
+    Picture whole;
+    CHECK(readPicture(source, Format::Mp3, whole));
+    CHECK(whole.data == big);
 }
 
 TEST("ID3v1 fills what ID3v2 left empty")

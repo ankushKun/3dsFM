@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 0.2.4" src="https://img.shields.io/badge/version-0.2.4-3a96eb?style=for-the-badge">
+  <img alt="Version 0.3.0" src="https://img.shields.io/badge/version-0.3.0-3a96eb?style=for-the-badge">
   <img alt="Nintendo 3DS" src="https://img.shields.io/badge/platform-Nintendo%203DS-e60012?style=for-the-badge">
   <img alt="GPLv3 license" src="https://img.shields.io/badge/license-GPLv3-56e39f?style=for-the-badge">
   <img alt="Active development" src="https://img.shields.io/badge/status-in%20development-ffc857?style=for-the-badge">
@@ -32,7 +32,7 @@ The 3DS has stereo speakers, a headphone jack, a clamshell that protects the scr
 It shares its toolchain, container build and release pipeline with [3dsDL](https://github.com/ankushKun/3dsDL), the 3DS downloader.
 
 > [!IMPORTANT]
-> Version 0.2.4 is a development build. Playback from the SD card works in the Azahar emulator and is being checked on a console; the tag reader, library scanner and play queue are covered by automated tests. Streaming from a server, saving songs and pairing have their screens in place but stay switched off until the server exists. The plan is in [docs/PLAN.md](docs/PLAN.md).
+> Version 0.3.0 is a development build. Playback from the SD card works in the Azahar emulator and is being checked on a console; the tag reader, library scanner and play queue are covered by automated tests. Streaming from a server, saving songs and pairing have their screens in place but stay switched off until the server exists. The plan is in [docs/PLAN.md](docs/PLAN.md).
 
 ## ✨ Features
 
@@ -40,7 +40,7 @@ It shares its toolchain, container build and release pipeline with [3dsDL](https
   <tr>
     <td width="50%" valign="top">
       <h4>📂 Albums from folders</h4>
-      Drop albums under <code>sdmc:/Music</code>, one folder each. Tags come from ID3v1 and ID3v2, Vorbis comments and WAV INFO chunks; untagged files take their title from the file name and their album and artist from the folders.
+      Drop albums under <code>sdmc:/Music</code>, one folder each. Tags come from ID3v1 and ID3v2, Vorbis comments and WAV INFO chunks; untagged files take their title from the file name and their album and artist from the folders. The scan is saved as an index on the card, so only new files are read on later launches.
     </td>
     <td width="50%" valign="top">
       <h4>🎧 Four formats</h4>
@@ -152,6 +152,7 @@ A folder whose songs have different artists is shown as a playlist with a mosaic
 | Songs and albums | <kbd>Y</kbd> | Menu: play now, add to up next, shuffle the album, go to the album or artist |
 | Songs and albums | <kbd>X</kbd> | Save to the SD card (needs a paired server, so it only shows a notice for now) |
 | Lists | Drag or flick | Scroll |
+| Now Playing | Up / Down | Move the cursor between the buttons and the Up next list |
 | Now Playing | Touch the bar | Seek |
 
 ### Settings
@@ -162,7 +163,7 @@ A folder whose songs have different artists is shown as a playlist with a mosaic
 | Dark mode | On | Dark screens with light text. Off gives the white HOME Menu look. |
 | Album art on the top screen | On | Fogs the focused album's art into the top screen. Off saves some battery on an Old 3DS. |
 | Music folder | `sdmc:/Music` | Where 3dsFM looks for albums. Typed with the console keyboard. |
-| Rescan the Music folder | | Reads the folder again after you copy music to the card. |
+| Rescan the Music folder | | New files are picked up every launch; this reads every file's tags again, for when you have edited them. |
 | Paired server, Stream quality, Prefer saved copies | | Shown, but switched off until the server exists. |
 
 Shuffle, repeat and the visualizer style are set from Now Playing and remembered too.
@@ -173,6 +174,7 @@ Shuffle, repeat and the visualizer style are set from Now Playing and remembered
 | --- | --- |
 | `sdmc:/Music/` | Your albums, one folder each (the folder is a setting). |
 | `sdmc:/3ds/3dsFM/settings.ini` | Settings, including shuffle, repeat and the visualizer style. |
+| `sdmc:/3ds/3dsFM/library.idx` | The library index: every song's tags from the last scan, so the next launch reads no music files. Delete it to force a full scan. |
 | `sdmc:/3ds/3dsFM/log.txt` | A short log of scans and playback, handy when reporting a bug. |
 | `sdmc:/3ds/dspfirm.cdc` | The DSP firmware NDSP needs. Without it 3dsFM runs silently and says so. |
 
@@ -289,7 +291,7 @@ Install devkitARM, libctru, Citro2D, Citro3D, 3ds-mpg123, 3ds-libopus, 3ds-opusf
 
 Building the same commit twice gives a byte-identical `3dsFM.3dsx`. The CIA is identical too, except for the ticket ID, title key and content ID that makerom randomises on every run; the packaged app inside it does not change.
 
-GitHub Actions runs the tests and the container build on every push and pull request and keeps `dist/` as a build artifact. To release, bump `VERSION`, commit, and push a matching tag such as `v0.2.4`. The workflow checks that the tag matches, verifies the checksums and publishes the release, which the website's QR codes point at through `releases/latest/download/`.
+GitHub Actions runs the tests and the container build on every push and pull request and keeps `dist/` as a build artifact. To release, bump `VERSION`, commit, and push a matching tag such as `v0.3.0`. The workflow checks that the tag matches, verifies the checksums and publishes the release, which the website's QR codes point at through `releases/latest/download/`.
 
 </details>
 

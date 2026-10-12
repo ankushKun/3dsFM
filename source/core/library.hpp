@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 // The music library: everything found under one folder on the SD card,
@@ -29,9 +30,13 @@ struct Track {
     int durationSeconds = 0;
     Format format = Format::Unknown;
     bool hasEmbeddedArt = false;
-    // Hash of the embedded picture's bytes, so identical covers can be told
-    // apart from merely similar ones without decoding them. 0 when none.
+    // Hash of the embedded picture (its first bytes and its size), so
+    // identical covers can be told apart from merely similar ones without
+    // decoding them. 0 when none.
     uint64_t artHash = 0;
+    // Kept so a track read back from the index can rebuild its album.
+    std::string albumArtist;
+    std::string year;
 };
 
 struct Album {
@@ -53,11 +58,21 @@ struct Album {
     std::vector<int> mosaicTracks;
 };
 
+// The on-disk index: the tracks of the last scan, so the next launch reads
+// no tags for files it has already seen. One line per track; see the .cpp
+// for the format.
+std::string encodeIndex(const std::vector<Track> &tracks);
+bool decodeIndex(const std::string &text, std::vector<Track> &out);
+
 class Library {
 public:
     // Lists every playable file under root. Cheap; no tags are read yet.
     void collect(const std::string &root, const Lister &lister);
-    // Reads tags for up to `count` collected files. Returns false when done.
+    // Tracks from a previous scan: a collected file with the same path is
+    // taken from here instead of having its tags read. Call before step.
+    void useIndex(const std::vector<Track> &known);
+    // Reads tags for up to `count` collected files (or takes them from the
+    // index). Returns false when done.
     bool step(const TagReader &reader, int count);
     // Groups the collected tracks into albums. Call after stepping finishes
     // (it is also safe to call in between for a partial view).
@@ -66,6 +81,8 @@ public:
 
     int collectedCount() const { return int(pending_.size()); }
     int scannedCount() const { return scanned_; }
+    // How many of the scanned tracks were taken from the index.
+    int reusedCount() const { return reused_; }
     bool scanning() const { return scanned_ < int(pending_.size()); }
 
     const std::vector<Track> &tracks() const { return tracks_; }
@@ -89,7 +106,9 @@ private:
         Format format;
     };
     std::vector<Pending> pending_;
+    std::unordered_map<std::string, Track> index_;
     int scanned_ = 0;
+    int reused_ = 0;
     std::vector<Track> tracks_;
     std::vector<Album> albums_;
     std::vector<std::pair<std::string, std::string>> looseCovers_; // folder, path
