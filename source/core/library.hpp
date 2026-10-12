@@ -1,0 +1,105 @@
+#pragma once
+
+#include "tags.hpp"
+
+#include <functional>
+#include <string>
+#include <vector>
+
+// The music library: everything found under one folder on the SD card,
+// grouped into albums. Portable; the console passes in a directory lister
+// and a tag reader so the host tests can use fake files.
+namespace core {
+
+struct Entry {
+    std::string name;
+    bool isDirectory = false;
+};
+
+using Lister = std::function<std::vector<Entry>(const std::string &directory)>;
+using TagReader = std::function<bool(const std::string &path, Format format, Tags &out)>;
+
+struct Track {
+    std::string path;
+    std::string title;
+    std::string artist;
+    std::string album;
+    std::string albumKey;
+    int trackNumber = 0;
+    int durationSeconds = 0;
+    Format format = Format::Unknown;
+    bool hasEmbeddedArt = false;
+    // Hash of the embedded picture's bytes, so identical covers can be told
+    // apart from merely similar ones without decoding them. 0 when none.
+    uint64_t artHash = 0;
+};
+
+struct Album {
+    std::string key;
+    std::string title;
+    std::string artist;
+    std::string year;
+    std::string folder;
+    // Where to get the cover: a loose image file in the album folder, or a
+    // track with embedded art. Empty when there is none.
+    std::string artPath;
+    bool artIsEmbedded = false;
+    std::vector<int> tracks; // indices into Library::tracks()
+    int durationSeconds = 0;
+    // A folder of songs by different artists is a playlist, not an album:
+    // it has no single cover and is shown as a mosaic of its songs' art.
+    bool isPlaylist = false;
+    // For a playlist: up to four tracks with distinct covers, for the mosaic.
+    std::vector<int> mosaicTracks;
+};
+
+class Library {
+public:
+    // Lists every playable file under root. Cheap; no tags are read yet.
+    void collect(const std::string &root, const Lister &lister);
+    // Reads tags for up to `count` collected files. Returns false when done.
+    bool step(const TagReader &reader, int count);
+    // Groups the collected tracks into albums. Call after stepping finishes
+    // (it is also safe to call in between for a partial view).
+    void build();
+    void clear();
+
+    int collectedCount() const { return int(pending_.size()); }
+    int scannedCount() const { return scanned_; }
+    bool scanning() const { return scanned_ < int(pending_.size()); }
+
+    const std::vector<Track> &tracks() const { return tracks_; }
+    const std::vector<Album> &albums() const { return albums_; }
+    std::vector<std::string> artists() const;
+    std::vector<int> albumsByArtist(const std::string &artist) const;
+    const Album *albumOf(int trackIndex) const;
+    int albumIndex(const std::string &key) const;
+
+    // Track indices whose title, artist or album contain the query,
+    // case-insensitively, best matches first.
+    std::vector<int> search(const std::string &query) const;
+
+    int totalDurationSeconds() const;
+
+private:
+    struct Pending {
+        std::string path;
+        std::string folder;
+        std::string fileName;
+        Format format;
+    };
+    std::vector<Pending> pending_;
+    int scanned_ = 0;
+    std::vector<Track> tracks_;
+    std::vector<Album> albums_;
+    std::vector<std::pair<std::string, std::string>> looseCovers_; // folder, path
+};
+
+// Helpers shared with the UI.
+std::string fileStem(const std::string &path);
+std::string parentFolder(const std::string &path);
+std::string baseName(const std::string &path);
+std::string toLowerAscii(const std::string &s);
+uint64_t hashBytes(const uint8_t *data, size_t size);
+
+} // namespace core

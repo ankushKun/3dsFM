@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>3dsFM: your music, on your Nintendo 3DS</title>
+  <meta name="description" content="3dsFM plays the music on your Nintendo 3DS SD card with cover art, a queue and a visualizer, lid open or closed. MP3, Ogg Vorbis, Opus and WAV. Install it with FBI in under a minute.">
+  <meta name="theme-color" content="#e7edf2">
+  <meta name="color-scheme" content="light">
+  <link rel="canonical" href="https://ankush.one/3dsFM/">
+  <link rel="icon" type="image/png" sizes="64x64" href="assets/icon-64.png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="3dsFM: your music, on your 3DS">
+  <meta property="og:description" content="Copy albums to the SD card and 3dsFM plays them with cover art, a queue and a visualizer, lid open or closed. Install with FBI in under a minute.">
+  <meta property="og:url" content="https://ankush.one/3dsFM/">
+  <meta property="og:image" content="https://ankush.one/3dsFM/assets/banner.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preload" href="fonts/m-plus-rounded-1c-800-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/dotgothic16-400-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="fonts.css">
+  <link rel="stylesheet" href="styles.css">
+  <!-- Set before first paint so the enhanced layouts don't flash the
+       no-script ones. -->
+  <script>document.documentElement.classList.add("js")</script>
+</head>
+<body>
+  <svg class="sprite" aria-hidden="true">
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></symbol>
+    <symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 10l4 4M21 10l-4 4"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="M3.5 7l8.5 6 8.5-6"/></symbol>
+    <symbol id="i-mail-open" viewBox="0 0 24 24"><path d="M3 10l9-6.5 9 6.5v8.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/><path d="M3.5 10.5l8.5 5.5 8.5-5.5"/></symbol>
+    <symbol id="g-library" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="g-art" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="9.5" r="1.6"/><path d="M4 17l5-4.5 3.5 3 3-2.5 4.5 4"/></symbol>
+    <symbol id="g-play" viewBox="0 0 24 24"><path d="M9 18V5l11-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="15" r="2.5"/></symbol>
+    <symbol id="g-queue" viewBox="0 0 24 24"><path d="M4 6.5h11M4 12h11M4 17.5h7"/><path d="M18 6.5v11l3.5-2.5"/></symbol>
+    <symbol id="g-bars" viewBox="0 0 24 24"><path d="M5 18v-5M10 18V6M15 18v-8M20 18v-3"/></symbol>
+    <symbol id="g-lid" viewBox="0 0 24 24"><path d="M4 15.5V7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8.5"/><path d="M2.5 15.5h19l-1.5 3h-16z"/><path d="M9 10.5h6"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path class="fill" d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.6 18.3 5 18.3 5c.6 1.7.2 2.9.1 3.2.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A11.5 11.5 0 0 0 23.5 12C23.5 5.7 18.3.5 12 .5z"/></symbol>
+  </svg>
+
+  <a class="skip" href="#install">Skip to install</a>
+
+  <!-- The top of the page is a 3DS status bar: the app, the sections in
+       the face buttons' colours, and the console's Wi-Fi, clock and
+       battery. -->
+  <header class="head">
+    <div class="head-in">
+      <a class="brand" href="#top" aria-label="3dsFM home">
+        <img src="assets/icon-64.png" width="30" height="30" alt="">
+        <span class="brand-name"><span class="brand-3ds">3ds</span>FM</span>
+      </a>
+      <nav class="tabs" aria-label="Sections">
+        <a href="#features" style="--tone: var(--x)"><span>Features</span></a>
+        <a href="#install" style="--tone: var(--a)"><span>Install</span></a>
+        <a href="#music" style="--tone: var(--y)"><span>Add<span class="tab-more"> music</span></span></a>
+        <a href="#faq" style="--tone: var(--b)"><span>FAQ</span></a>
+      </nav>
+      <div class="tray" aria-hidden="true">
+        <svg class="wifi" viewBox="0 0 22 16"><rect x="1" y="11" width="3.5" height="4" rx="1"/><rect x="6.5" y="8" width="3.5" height="7" rx="1"/><rect x="12" y="5" width="3.5" height="10" rx="1"/><rect x="17.5" y="1" width="3.5" height="14" rx="1"/></svg>
+        <span class="clock" data-clock><span data-hours>--</span><span class="colon">:</span><span data-minutes>--</span></span>
+        <svg class="battery" viewBox="0 0 30 16"><rect class="shell" x="1" y="1.5" width="25" height="13" rx="3"/><rect class="nub" x="26.5" y="5" width="2.5" height="6" rx="1"/><rect class="cell" x="4" y="4.5" width="4.4" height="7" rx="1"/><rect class="cell" x="9.4" y="4.5" width="4.4" height="7" rx="1"/><rect class="cell" x="14.8" y="4.5" width="4.4" height="7" rx="1"/><rect class="cell" x="20.2" y="4.5" width="3.3" height="7" rx="1"/></svg>
+      </div>
+    </div>
+  </header>
+
+  <div class="page">
+    <main id="top">
+      <section class="hero">
+        <p class="sticker" data-release-tag hidden></p>
+        <h1>Your music, <span class="accent">on your 3DS</span></h1>
+        <p class="sub">Copy albums to the SD card and 3dsFM plays them with cover art, a queue and a visualizer, lid open or closed. <br>No server, no account, no computer in the loop.</p>
+        <div class="cta">
+          <a class="btn btn-go" href="#install">Install with FBI</a>
+        </div>
+        <!-- A real New Nintendo 3DS (photo: PantheraLeo1359531, CC BY 4.0).
+             Its two screens are live HTML, drawn in 3DS pixels and mapped onto
+             the photographed screens with a perspective matrix. They power on
+             with a short boot screen, then play a song. The doodles are drawn
+             in the photo's own coordinates (1356 x 1177). -->
+        <div class="device device-angled reveal" data-tilt>
+          <div class="device-stage">
+            <img class="device-photo" src="assets/new-3ds-angled.png" width="1356" height="1177" alt="An open white New Nintendo 3DS, seen from the front at an angle, running 3dsFM. The top screen shows the song playing with its cover; the touch screen shows the player controls and the songs up next." decoding="async" fetchpriority="high">
+            <div class="screen screen-top" aria-hidden="true">
+              <span class="r" style="--x:16;--y:9;--w:3;--h:7;--rad:1;background:#3b97ea"></span>
+              <span class="r" style="--x:20;--y:5;--w:3;--h:11;--rad:1;background:#3b97ea"></span>
+              <span class="r" style="--x:24;--y:8;--w:3;--h:8;--rad:1;background:#3b97ea"></span>
+              <span class="t t-muted" style="--x:32;--y:3;--s:.42" data-demo-state>Now playing · MP3 · 3 songs queued</span>
+              <span class="t t-end t-muted" style="--x:386;--y:3;--s:.42">8:25 PM &nbsp;|&nbsp; 10/12</span>
+              <span class="r" style="--x:16;--y:43;--w:150;--h:150;--rad:12;background:rgba(0,0,0,.35)"></span>
+              <span class="r" style="--x:16;--y:40;--w:150;--h:150;--rad:12;background:#1c2440"></span>
+              <span class="r" style="--x:94;--y:61;--w:51;--h:51;--rad:26;background:#f6d96b"></span>
+              <span class="r" style="--x:16;--y:133;--w:150;--h:3;background:rgba(255,255,255,.7)"></span>
+              <span class="r" style="--x:16;--y:148;--w:150;--h:3;background:rgba(255,255,255,.45)"></span>
+              <span class="t t-bold" style="--x:184;--y:62;--s:1.22" data-demo-title>Plastic Love</span>
+              <span class="t" style="--x:184;--y:102;--s:.56" data-demo-artist>Mariya Takeuchi</span>
+              <span class="t t-muted" style="--x:184;--y:122;--s:.44" data-demo-album>Variety · 1984</span>
+              <span class="r" style="--x:184;--y:152;--w:200;--h:3;--rad:2;background:#3a3f48"></span>
+              <span class="r r-fill" style="--x:184;--y:152;--w:200;--h:3;--rad:2" data-demo-bar></span>
+              <span class="t t-muted" style="--x:184;--y:158;--s:.42" data-demo-pos>1:48</span>
+              <span class="t t-end t-muted" style="--x:384;--y:158;--s:.42" data-demo-len>4:52</span>
+              <span class="r" style="--x:16;--y:206;--w:26;--h:26;--rad:5;background:#2fa37a"></span>
+              <span class="r" style="--x:16;--y:217;--w:26;--h:4;background:#1f1f1f"></span>
+              <span class="t t-bold" style="--x:48;--y:204;--s:.44" data-demo-next-title>Stay With Me</span>
+              <span class="t t-muted" style="--x:48;--y:216;--s:.42" data-demo-next-artist>Up next · Miki Matsubara</span>
+              <span class="t t-end t-muted" style="--x:386;--y:220;--s:.38">(A) Pause &nbsp; (L) Prev &nbsp; (R) Next &nbsp; (Y) Menu</span>
+              <div class="boot boot-top"><img src="assets/icon-64.png" width="64" height="64" alt=""><span>3dsFM</span></div>
+            </div>
+            <div class="screen screen-bottom" aria-hidden="true">
+              <span class="r" style="--x:13;--y:10;--w:13;--h:12;--rad:3;background:#3b97ea"></span>
+              <span class="r" style="--x:37;--y:10;--w:13;--h:12;--rad:3;background:#5b636f"></span>
+              <span class="r" style="--x:61;--y:10;--w:13;--h:12;--rad:3;background:#5b636f"></span>
+              <span class="r" style="--x:85;--y:10;--w:13;--h:12;--rad:3;background:#5b636f"></span>
+              <span class="r" style="--x:109;--y:10;--w:13;--h:12;--rad:3;background:#5b636f"></span>
+              <span class="r" style="--x:245;--y:6;--w:20;--h:20;--rad:10;background:#262a31"></span>
+              <span class="r" style="--x:268;--y:6;--w:20;--h:20;--rad:10;background:#262a31"></span>
+              <span class="r" style="--x:291;--y:6;--w:20;--h:20;--rad:10;background:#eceff3"></span>
+              <span class="r" style="--x:10;--y:35;--w:300;--h:42;--rad:8;background:rgba(0,0,0,.35)"></span>
+              <span class="r" style="--x:10;--y:33;--w:300;--h:42;--rad:8;background:#262a31"></span>
+              <span class="r" style="--x:16;--y:40;--w:28;--h:28;--rad:5;background:#1c2440"></span>
+              <span class="r" style="--x:30;--y:44;--w:10;--h:10;--rad:5;background:#f6d96b"></span>
+              <span class="t t-bold" style="--x:50;--y:35;--s:.5" data-demo-title>Plastic Love</span>
+              <span class="t t-muted" style="--x:50;--y:50;--s:.38" data-demo-artist>Mariya Takeuchi</span>
+              <span class="r" style="--x:50;--y:64;--w:200;--h:4;--rad:2;background:#3a3f48"></span>
+              <span class="r r-fill" style="--x:50;--y:64;--w:200;--h:4;--rad:2" data-demo-bar></span>
+              <span class="t t-end t-muted" style="--x:304;--y:38;--s:.4" data-demo-pos>1:48</span>
+              <span class="t t-end t-muted" style="--x:304;--y:52;--s:.4" data-demo-len>4:52</span>
+              <span class="r" style="--x:87;--y:91;--w:18;--h:18;--rad:9;background:#262a31"></span>
+              <span class="r" style="--x:116;--y:88;--w:24;--h:24;--rad:12;background:#262a31"></span>
+              <span class="r" style="--x:144;--y:84;--w:32;--h:32;--rad:16;background:#eceff3"></span>
+              <span class="r" style="--x:154;--y:93;--w:4;--h:14;--rad:1;background:#15171b"></span>
+              <span class="r" style="--x:162;--y:93;--w:4;--h:14;--rad:1;background:#15171b"></span>
+              <span class="r" style="--x:180;--y:88;--w:24;--h:24;--rad:12;background:#262a31"></span>
+              <span class="r" style="--x:215;--y:91;--w:18;--h:18;--rad:9;background:#262a31"></span>
+              <span class="t t-muted" style="--x:14;--y:124;--s:.36">Up next · 3 songs</span>
+              <span class="r" style="--x:10;--y:143;--w:300;--h:26;--rad:7;background:#262a31"></span>
+              <span class="r" style="--x:16;--y:145;--w:22;--h:22;--rad:4;background:#2fa37a"></span>
+              <span class="t t-bold" style="--x:43;--y:143;--s:.5" data-demo-next-title>Stay With Me</span>
+              <span class="t t-muted" style="--x:43;--y:156;--s:.38">Miki Matsubara</span>
+              <span class="t t-end t-muted" style="--x:302;--y:149;--s:.42">4:17</span>
+              <span class="r" style="--x:10;--y:172;--w:300;--h:26;--rad:7;background:#262a31"></span>
+              <span class="r" style="--x:16;--y:174;--w:22;--h:22;--rad:4;background:#f2a1b8"></span>
+              <span class="t t-bold" style="--x:43;--y:172;--s:.5">Fly-Day Chinatown</span>
+              <span class="t t-muted" style="--x:43;--y:185;--s:.38">Yasuha</span>
+              <span class="t t-end t-muted" style="--x:302;--y:178;--s:.42">4:35</span>
+              <span class="r" style="--x:10;--y:201;--w:300;--h:26;--rad:7;background:#262a31"></span>
+              <span class="r" style="--x:16;--y:203;--w:22;--h:22;--rad:4;background:#4fa3e0"></span>
+              <span class="t t-bold" style="--x:43;--y:201;--s:.5">4:00 A.M.</span>
+              <span class="t t-muted" style="--x:43;--y:214;--s:.38">Taeko Onuki</span>
+              <span class="t t-end t-muted" style="--x:302;--y:207;--s:.42">4:51</span>
+              <div class="boot boot-bottom"><i></i><i></i><i></i></div>
+            </div>
+            <svg class="doodles" viewBox="0 0 1356 1177" aria-hidden="true">
+              <g class="doodle pen-blue" style="--d: 0">
+                <text x="62" y="236" transform="rotate(-6 62 236)">long titles</text>
+                <text x="84" y="294" transform="rotate(-6 84 294)">scroll by!</text>
+                <path pathLength="1" d="M330 318C420 304 480 330 556 372"/>
+                <path pathLength="1" d="M538 343L556 372L522 373"/>
+              </g>
+              <g class="doodle pen-red" style="--d: 1">
+                <text x="40" y="1012" transform="rotate(4 40 1012)">L and R</text>
+                <text x="70" y="1068" transform="rotate(4 70 1068)">skip songs</text>
+                <path pathLength="1" d="M300 985C350 930 420 880 486 832"/>
+                <path pathLength="1" d="M452 836L486 832L472 863"/>
+              </g>
+              <g class="doodle pen-green" style="--d: 2">
+                <text x="1046" y="1016" transform="rotate(-4 1046 1016)">plays with</text>
+                <text x="1040" y="1072" transform="rotate(-4 1040 1072)">the lid shut!</text>
+                <path pathLength="1" d="M1160 952C1230 820 1170 660 1046 568"/>
+                <path pathLength="1" d="M1060 599L1046 568L1080 572"/>
+              </g>
+              <g class="doodle doodle-stars pen-yellow" style="--d: 3">
+                <path pathLength="1" d="M1180 58L1188 92L1222 100L1188 108L1180 142L1172 108L1138 100L1172 92Z"/>
+                <path pathLength="1" d="M1272 150L1277 170L1297 175L1277 180L1272 200L1267 180L1247 175L1267 170Z"/>
+              </g>
+            </svg>
+          </div>
+        </div>
+      </section>
+
+      <!-- Features, as a HOME Menu: icons on the touch screen, the selected
+           one's demo and description on the top screen. Without the script
+           the features are a plain grid of cards. -->
+      <section id="features" class="section panel tone-x reveal">
+        <header class="section-head">
+          <p class="eyebrow">Features</p>
+          <h2>A player that feels like it shipped with the console</h2>
+        </header>
+        <div class="home" data-home>
+          <div class="home-top">
+            <div class="home-screen">
+              <div class="home-app-bar" aria-hidden="true"><span>3dsFM</span><span class="home-app-state">library</span></div>
+              <article class="feature is-on" id="feat-library" role="tabpanel" aria-labelledby="feat-library-title">
+                <div class="feature-demo m-list">
+                  <span class="m-row m-cyan">sdmc:/Music</span>
+                  <span class="m-row on">Pocket Park · Miki Matsubara</span>
+                  <span class="m-row">Variety · Mariya Takeuchi</span>
+                  <span class="m-row">Top Picks · Playlist</span>
+                </div>
+                <div class="feature-text">
+                  <h3 id="feat-library-title">Albums from folders</h3>
+                  <p>Copy music to <code>sdmc:/Music</code>, one folder per album. Tags are read from MP3, Ogg Vorbis, Opus and WAV; untagged files take their names from the folders.</p>
+                </div>
+              </article>
+              <article class="feature" id="feat-art" role="tabpanel" aria-labelledby="feat-art-title">
+                <div class="feature-demo">
+                  <span class="m-line">Cover from the file's own picture</span>
+                  <span class="m-line m-muted">or cover.jpg beside the songs</span>
+                  <span class="m-line m-green">Playlists get a four-cover mosaic</span>
+                </div>
+                <div class="feature-text">
+                  <h3 id="feat-art-title">Art from your files</h3>
+                  <p>Embedded pictures or a cover image in the folder, with rounded corners everywhere. A folder of songs by different artists is a playlist and shows its first four distinct covers.</p>
+                </div>
+              </article>
+              <article class="feature" id="feat-play" role="tabpanel" aria-labelledby="feat-play-title">
+                <div class="feature-demo">
+                  <span class="m-line">Plastic Love</span>
+                  <span class="m-bar"><i style="width:37%"></i></span>
+                  <span class="m-line m-muted">1:48 of 4:52 · Up next: Stay With Me</span>
+                </div>
+                <div class="feature-text">
+                  <h3 id="feat-play-title">Covers fill the top screen</h3>
+                  <p>The playing song's art fogs into the top screen with the title set like a game logo. Whatever the touch screen is doing, the top screen shows what's playing and what's next.</p>
+                </div>
+              </article>
+              <article class="feature" id="feat-queue" role="tabpanel" aria-labelledby="feat-queue-title">
+                <div class="feature-demo m-list">
+                  <span class="m-row m-cyan">Up next · 22 songs</span>
+                  <span class="m-row on">Fly-Day Chinatown</span>
+                  <span class="m-row">4:00 A.M.</span>
+                  <span class="m-row">Midnight Pretenders</span>
+                </div>
+                <div class="feature-text">
+                  <h3 id="feat-queue-title">A queue you can shape</h3>
+                  <p>Y on any song or album adds it to Up next. Tap once to pick, again to jump. Lists scroll with a drag or a flick and stop where you leave them. Shuffle and repeat are a press away.</p>
+                </div>
+              </article>
+              <article class="feature" id="feat-bars" role="tabpanel" aria-labelledby="feat-bars-title">
+                <div class="feature-demo">
+                  <span class="m-line">Bars · Wave · Dots · Art only</span>
+                  <span class="m-bar"><i style="width:72%"></i></span>
+                  <span class="m-line m-muted">20 bands, in the cover's own colors</span>
+                </div>
+                <div class="feature-text">
+                  <h3 id="feat-bars-title">A visualizer in the cover's colors</h3>
+                  <p>SELECT opens it from anywhere. Four styles drawn from the decoded audio, colored from the album art, with the touch screen dimming after a while to save battery.</p>
+                </div>
+              </article>
+              <article class="feature" id="feat-lid" role="tabpanel" aria-labelledby="feat-lid-title">
+                <div class="feature-demo">
+                  <span class="m-line m-green">Lid closed · still playing</span>
+                  <span class="m-line">Screens off, Wi-Fi awake</span>
+                  <span class="m-line m-muted">L and R skip without looking</span>
+                </div>
+                <div class="feature-text">
+                  <h3 id="feat-lid-title">Plays with the lid shut</h3>
+                  <p>Close the lid and the screens go dark while the music carries on, like the console's own sound app. Open it and everything is where you left it.</p>
+                </div>
+              </article>
+            </div>
+          </div>
+          <div class="home-bottom">
+            <div class="home-grid" role="tablist" aria-label="Features">
+              <span class="home-cursor" aria-hidden="true"></span>
+              <button class="app-icon" type="button" role="tab" id="tab-library" aria-controls="feat-library" aria-selected="true" style="--tint:#2fb6e8"><span class="app-glyph"><svg class="icon"><use href="#g-library"/></svg></span><span class="app-label">Library</span></button>
+              <button class="app-icon" type="button" role="tab" id="tab-art" aria-controls="feat-art" aria-selected="false" tabindex="-1" style="--tint:#f08a3c"><span class="app-glyph"><svg class="icon"><use href="#g-art"/></svg></span><span class="app-label">Covers</span></button>
+              <button class="app-icon" type="button" role="tab" id="tab-play" aria-controls="feat-play" aria-selected="false" tabindex="-1" style="--tint:#3fb45f"><span class="app-glyph"><svg class="icon"><use href="#g-play"/></svg></span><span class="app-label">Now playing</span></button>
+              <button class="app-icon" type="button" role="tab" id="tab-queue" aria-controls="feat-queue" aria-selected="false" tabindex="-1" style="--tint:#eab526"><span class="app-glyph"><svg class="icon"><use href="#g-queue"/></svg></span><span class="app-label">Up next</span></button>
+              <button class="app-icon" type="button" role="tab" id="tab-bars" aria-controls="feat-bars" aria-selected="false" tabindex="-1" style="--tint:#e8577a"><span class="app-glyph"><svg class="icon"><use href="#g-bars"/></svg></span><span class="app-label">Visualizer</span></button>
+              <button class="app-icon" type="button" role="tab" id="tab-lid" aria-controls="feat-lid" aria-selected="false" tabindex="-1" style="--tint:#6a75e8"><span class="app-glyph"><svg class="icon"><use href="#g-lid"/></svg></span><span class="app-label">Lid closed</span></button>
+            </div>
+          </div>
+        </div>
+        <p class="also">Also: dark mode by default with a light HOME Menu look in Settings, search with the console's keyboard, long titles that scroll instead of being cut, and a design drawn to match the HOME Menu rather than a phone app.</p>
+      </section>
+
+      <section id="install" class="section panel tone-a">
+        <header class="section-head">
+          <p class="eyebrow">Install</p>
+          <h2>Add it to your 3DS</h2>
+          <p class="section-sub">You need a 3DS running custom firmware (Luma3DS) with FBI or the Homebrew Launcher. Not set up yet? Follow <a href="https://3ds.hacks.guide/">3ds.hacks.guide</a> first.</p>
+        </header>
+
+        <!-- Pick a method; the 3DS below shows its QR code on the top screen
+             and what to do with it on the touch screen. On narrow screens the
+             steps move out of the console into .install-steps, where they can
+             be read. -->
+        <div class="installer reveal">
+          <div class="picker" role="tablist" aria-label="How to install 3dsFM" data-active="cia">
+            <button class="pick" type="button" role="tab" id="pick-cia" aria-selected="true" aria-controls="install-screens" data-method="cia">
+              <span class="pick-title">HOME Menu app</span>
+              <span class="pick-sub">3dsFM.cia, installs with FBI</span>
+            </button>
+            <button class="pick" type="button" role="tab" id="pick-3dsx" aria-selected="false" aria-controls="install-screens" data-method="3dsx" tabindex="-1">
+              <span class="pick-title">Homebrew Launcher</span>
+              <span class="pick-sub">3dsFM.3dsx, runs from the SD card</span>
+            </button>
+          </div>
+
+          <div class="install-panel" id="install-screens" role="tabpanel" aria-labelledby="pick-cia">
+            <div class="device device-front">
+              <div class="device-stage">
+                <img class="device-photo" src="assets/new-3ds-front.png" width="736" height="736" alt="" loading="lazy" decoding="async">
+                <span class="led" aria-hidden="true"></span>
+
+                <div class="screen screen-top">
+                  <div class="view qr-view" data-view="cia">
+                    <figure class="qr-tile">
+                      <img src="qr/install-cia.svg" width="184" height="184" alt="QR code that installs the latest 3dsFM CIA with FBI">
+                    </figure>
+                    <div class="qr-side">
+                      <span class="qr-kicker">Scan with</span>
+                      <span class="qr-app">FBI</span>
+                      <span class="qr-path">Remote Install, then Scan QR Code</span>
+                      <span class="qr-file">3dsFM.cia</span>
+                    </div>
+                  </div>
+                  <div class="view qr-view" data-view="3dsx" hidden>
+                    <figure class="qr-tile">
+                      <img src="qr/download-3dsx.svg" width="184" height="184" alt="QR code that downloads the latest 3dsFM.3dsx">
+                    </figure>
+                    <div class="qr-side">
+                      <span class="qr-kicker">Scan with</span>
+                      <span class="qr-app">3dsDL</span>
+                      <span class="qr-path">Scan QR Code, save to sdmc:/3ds/3dsFM/</span>
+                      <span class="qr-file">3dsFM.3dsx</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="screen screen-bottom">
+                  <div class="split-note" aria-hidden="true"><b>&#9660;</b><span>Steps below</span></div>
+                  <div class="view info-view" data-view="cia">
+                    <div class="info-head">
+                      <h3>HOME Menu app</h3>
+                      <span class="chip">Recommended</span>
+                    </div>
+                    <p class="info-meta">3dsFM.cia<span class="size-inline" data-asset-size="3dsFM.cia"></span>, updates in place</p>
+                    <ol class="info-steps">
+                      <li>Open <b>FBI</b> on your 3DS.</li>
+                      <li>Choose <b>Remote Install</b>, then <b>Scan QR Code</b>.</li>
+                      <li>Point the camera at the code above and confirm.</li>
+                    </ol>
+                    <div class="info-actions">
+                      <button class="sbtn" type="button" data-copy="https://github.com/ankushKun/3dsFM/releases/latest/download/3dsFM.cia"><span>Copy link</span></button>
+                      <a class="sbtn sbtn-go" href="https://github.com/ankushKun/3dsFM/releases/latest/download/3dsFM.cia">Download</a>
+                    </div>
+                  </div>
+                  <div class="view info-view" data-view="3dsx" hidden>
+                    <div class="info-head">
+                      <h3>Homebrew Launcher</h3>
+                    </div>
+                    <p class="info-meta">3dsFM.3dsx<span class="size-inline" data-asset-size="3dsFM.3dsx"></span>, no install needed</p>
+                    <ol class="info-steps">
+                      <li>Copy it to <b>sdmc:/3ds/3dsFM/</b>, or scan the code with <a href="https://ankush.one/3dsDL/">3dsDL</a>.</li>
+                      <li>Start it from the Homebrew Launcher.</li>
+                      <li>Put music under <b>sdmc:/Music</b>.</li>
+                    </ol>
+                    <div class="info-actions">
+                      <button class="sbtn" type="button" data-copy="https://github.com/ankushKun/3dsFM/releases/latest/download/3dsFM.3dsx"><span>Copy link</span></button>
+                      <a class="sbtn sbtn-go" href="https://github.com/ankushKun/3dsFM/releases/latest/download/3dsFM.3dsx">Download</a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="install-steps"></div>
+          </div>
+
+          <noscript>
+            <ul class="nojs-downloads">
+              <li><a href="https://github.com/ankushKun/3dsFM/releases/latest/download/3dsFM.cia">3dsFM.cia</a>: install with FBI (Remote Install, then Scan QR Code). <img src="qr/install-cia.svg" width="150" height="150" alt="QR code that installs the latest 3dsFM CIA with FBI"></li>
+              <li><a href="https://github.com/ankushKun/3dsFM/releases/latest/download/3dsFM.3dsx">3dsFM.3dsx</a>: copy to sdmc:/3ds/3dsFM/ and start it from the Homebrew Launcher. <img src="qr/download-3dsx.svg" width="150" height="150" alt="QR code that downloads the latest 3dsFM.3dsx"></li>
+            </ul>
+          </noscript>
+        </div>
+
+        <aside class="notice">
+          <span class="notice-icon" aria-hidden="true"><svg class="icon"><use href="#i-sound"/></svg></span>
+          <p><strong>No sound?</strong> Homebrew needs the console's own DSP firmware. Run <a href="https://github.com/zoogie/DSP1">DSP1</a> once; it writes <strong>sdmc:/3ds/dspfirm.cdc</strong> and 3dsFM finds it from then on. Until then the app runs silently and says so.</p>
+        </aside>
+        <p class="fine fine-center">
+          Direct downloads: <a href="https://github.com/ankushKun/3dsFM/releases/latest/download/3dsFM.cia">3dsFM.cia</a> · <a href="https://github.com/ankushKun/3dsFM/releases/latest/download/3dsFM.3dsx">3dsFM.3dsx</a> ·
+          SHA-256 checksums in <a href="https://github.com/ankushKun/3dsFM/releases/latest/download/3dsFM.sha256">3dsFM.sha256</a> ·
+          older versions on the <a href="https://github.com/ankushKun/3dsFM/releases">releases page</a>.
+        </p>
+      </section>
+
+      <!-- Add music, as a PictoChat room: you ask, 3dsFM answers with the
+           folder layout. -->
+      <section id="music" class="section panel tone-y reveal">
+        <header class="section-head">
+          <p class="eyebrow">Add music</p>
+          <h2>Folders in, albums out</h2>
+          <p class="section-sub">3dsFM reads whatever is under <strong>sdmc:/Music</strong> on the SD card. Folders become albums, tags fill in the rest, and a rescan in Settings picks up new files.</p>
+        </header>
+        <div class="chat">
+          <div class="chat-bar" aria-hidden="true">
+            <span class="chat-room">A</span>
+            <span class="chat-title">Chat Room A</span>
+            <span class="chat-who">You + 3dsFM</span>
+          </div>
+          <div class="chat-log">
+            <div class="msg msg-you">
+              <span class="msg-name" aria-hidden="true">You</span>
+              <p>How should I lay the files out?</p>
+            </div>
+            <div class="msg msg-app">
+              <span class="msg-name" aria-hidden="true">3dsFM</span>
+              <p>One folder per album, with the artist's folder above it if you like. Cover files are optional; embedded pictures work too.</p>
+<pre class="tree"><b>sdmc:/Music/</b>
+├── Miki Matsubara/
+│   └── Pocket Park/
+│       ├── 01 - Mayonaka no Door.mp3
+│       ├── 02 - Niji Iro no Ame.mp3
+│       └── cover.jpg
+├── Taeko Onuki/
+│   └── Sunshower/
+│       ├── 01 - Summer Connection.opus
+│       └── folder.png
+└── Top Picks/
+    ├── 01 - Not Tomorrow.mp3
+    └── 02 - Sweden.mp3</pre>
+            </div>
+            <div class="msg msg-you">
+              <span class="msg-name" aria-hidden="true">You</span>
+              <p>What about the Top Picks folder? It's songs by all sorts of people.</p>
+            </div>
+            <div class="msg msg-app">
+              <span class="msg-name" aria-hidden="true">3dsFM</span>
+              <p>That's a playlist. When the songs in a folder have different artists, 3dsFM shows it with a mosaic of its first four distinct covers and calls it a playlist instead of giving it one artist.</p>
+            </div>
+            <div class="msg msg-you">
+              <span class="msg-name" aria-hidden="true">You</span>
+              <p>Which formats?</p>
+            </div>
+            <div class="msg msg-app">
+              <span class="msg-name" aria-hidden="true">3dsFM</span>
+              <p>MP3, Ogg Vorbis, Opus and WAV. Tags come from ID3v1 and ID3v2, Vorbis comments and Opus tags. Files with no tags take their title from the file name and their album and artist from the folders.</p>
+            </div>
+          </div>
+        </div>
+        <p class="fine fine-center">Streaming from your own server, saving songs to the SD card and pairing are drawn in the app but switched off until the server exists. Everything above works today, offline.</p>
+      </section>
+
+      <!-- The FAQ, as the Notifications app: unread ones are marked new until
+           opened, and the browser remembers which were read. -->
+      <section id="faq" class="section panel tone-b reveal">
+        <header class="section-head">
+          <p class="eyebrow">Questions</p>
+          <h2>Common questions</h2>
+        </header>
+        <div class="faq">
+          <div class="faq-bar" aria-hidden="true">
+            <svg class="icon"><use href="#i-mail"/></svg>
+            <span>Notifications</span>
+            <span class="faq-count" data-unread></span>
+          </div>
+          <details id="q-sound">
+            <summary><span class="note-icon" aria-hidden="true"><svg class="icon i-closed"><use href="#i-mail"/></svg><svg class="icon i-open"><use href="#i-mail-open"/></svg></span><span class="note-title">It runs but there's no sound</span><span class="note-new" aria-hidden="true">NEW</span></summary>
+            <p>Homebrew audio needs the console's DSP firmware, which Nintendo doesn't let apps carry. Run <a href="https://github.com/zoogie/DSP1">DSP1</a> once: it dumps it to <code>sdmc:/3ds/dspfirm.cdc</code>, and 3dsFM finds it from then on. The app tells you when the file is missing.</p>
+          </details>
+          <details id="q-formats">
+            <summary><span class="note-icon" aria-hidden="true"><svg class="icon i-closed"><use href="#i-mail"/></svg><svg class="icon i-open"><use href="#i-mail-open"/></svg></span><span class="note-title">Which files does it play?</span><span class="note-new" aria-hidden="true">NEW</span></summary>
+            <p>MP3, Ogg Vorbis, Opus and WAV, decoded in software, so an Old 3DS copes too. FLAC and AAC aren't there yet. Convert with ffmpeg if you need to: Opus at 96 kbps sounds very good on the console's speakers and headphones and keeps files small.</p>
+          </details>
+          <details id="q-art">
+            <summary><span class="note-icon" aria-hidden="true"><svg class="icon i-closed"><use href="#i-mail"/></svg><svg class="icon i-open"><use href="#i-mail-open"/></svg></span><span class="note-title">My covers don't show up</span><span class="note-new" aria-hidden="true">NEW</span></summary>
+            <p>3dsFM looks for a picture inside each file first, then for <code>cover</code>, <code>folder</code>, <code>front</code> or <code>album</code> images (JPEG or PNG) in the album's folder. Very large pictures are fine; they're scaled on a background thread. If the file's picture is in a format other than JPEG or PNG, the folder image is the fallback.</p>
+          </details>
+          <details id="q-playlist">
+            <summary><span class="note-icon" aria-hidden="true"><svg class="icon i-closed"><use href="#i-mail"/></svg><svg class="icon i-open"><use href="#i-mail-open"/></svg></span><span class="note-title">Why is my folder a "playlist"?</span><span class="note-new" aria-hidden="true">NEW</span></summary>
+            <p>Because its songs have different artists. An album has one cover; a playlist has many, so it's drawn as a mosaic of its first four distinct covers and labelled Playlist. Give the songs the same album artist tag and the same cover if you'd rather it looked like an album.</p>
+          </details>
+          <details id="q-lid">
+            <summary><span class="note-icon" aria-hidden="true"><svg class="icon i-closed"><use href="#i-mail"/></svg><svg class="icon i-open"><use href="#i-mail-open"/></svg></span><span class="note-title">Does it keep playing with the lid closed?</span><span class="note-new" aria-hidden="true">NEW</span></summary>
+            <p>Yes, when <strong>Settings → Keep playing with the lid closed</strong> is on, which it is by default. The screens switch off and the music carries on; L and R still skip songs. Pause first if you'd rather the console slept.</p>
+          </details>
+          <details id="q-server">
+            <summary><span class="note-icon" aria-hidden="true"><svg class="icon i-closed"><use href="#i-mail"/></svg><svg class="icon i-open"><use href="#i-mail-open"/></svg></span><span class="note-title">Can it stream from somewhere?</span><span class="note-new" aria-hidden="true">NEW</span></summary>
+            <p>Not yet. The screens for pairing a personal 3dsFM server, streaming and saving songs are in the app but disabled until the server ships. Today it's an offline player for the music on your SD card, which is also the part that works on a train.</p>
+          </details>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- The back of the box: a (made-up) rating, the links and the small
+         print. -->
+    <footer class="foot panel">
+      <div class="rating" role="img" aria-label="Rated H for Homebrew. Content: frequent listening, mild visualizers, open source.">
+        <div class="rating-box"><b>H</b><span>HOMEBREW</span></div>
+        <ul class="rating-notes">
+          <li>Frequent Listening</li>
+          <li>Mild Visualizers</li>
+          <li>Open Source</li>
+        </ul>
+      </div>
+      <div class="foot-main">
+        <nav class="foot-links" aria-label="Project links">
+          <a href="https://github.com/ankushKun/3dsFM"><svg class="icon"><use href="#i-github"/></svg>Source code</a>
+          <a href="https://github.com/ankushKun/3dsFM/releases">Releases</a>
+          <a href="https://github.com/ankushKun/3dsFM/blob/main/docs/PLAN.md">Plan</a>
+          <a href="https://github.com/ankushKun/3dsFM/issues">Report a bug</a>
+          <a href="https://ankush.one/3dsDL/">3dsDL</a>
+          <a href="https://ankush.one">ankush.one</a>
+          <button class="sound-toggle" type="button" id="sound-toggle" aria-pressed="true">
+            <svg class="icon"><use href="#i-sound"/></svg><span>Menu sounds on</span>
+          </button>
+        </nav>
+        <p class="legal">3dsFM is free software under the GPLv3, made by <a href="https://ankush.one">ankushKun</a>. It is built on libctru and Citro2D, mpg123, Opus and Tremor, libjpeg-turbo and libpng, and shares its tooling with <a href="https://ankush.one/3dsDL/">3dsDL</a>. Not affiliated with Nintendo; Nintendo 3DS is a trademark of Nintendo. Hero photo: <a href="https://commons.wikimedia.org/wiki/File:New_Nintendo_3DS_(wei%C3%9F)_20250129_HOF2650_RAW-Export.png">PantheraLeo1359531</a> (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>, cropped, with the screens replaced and doodles added). Install image: New Nintendo 3DS product render © Nintendo, with the screens replaced. Fonts: M PLUS Rounded 1c, M PLUS 1 Code, DotGothic16 and Gaegu (OFL).</p>
+      </div>
+    </footer>
+  </div>
+
+  <script src="app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+# devkitARM build output
+/build/
+/dist/
+*.elf
+*.map
+*.smdh
+*.3dsx
+*.cia
+*.3ds
+
+# Local development
+.DS_Store
+.vscode/
+.idea/
+/emulator/
+
+# Host test build output
+/tests/build/
+__pycache__/
+
+# Font sources (downloaded by scripts/make-fonts.sh)
+/resources/fonts/src/

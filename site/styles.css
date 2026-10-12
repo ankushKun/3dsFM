@@ -1,0 +1,2326 @@
+/*
+ * 3dsFM website, themed after the DS and 3DS system software: a drifting
+ * HOME Menu backdrop, a status bar with section tabs in the ABXY colours,
+ * glossy chunky controls, and sections that borrow from the built-in apps
+ * (the HOME Menu, PictoChat, Notifications). The subject is a real New
+ * Nintendo 3DS whose screens are live HTML.
+ *
+ * The page shares its bones with the 3dsDL site.
+ */
+
+:root {
+  --font: "M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", "Arial Rounded MT Bold", system-ui, sans-serif;
+  --mono: "M PLUS 1 Code", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --dot: "DotGothic16", "M PLUS 1 Code", ui-monospace, monospace;
+  --hand: "Gaegu", "Comic Sans MS", cursive;
+
+  --bg: #e7edf2;
+  --panel: #fdfefe;
+  --rim: #c3ced8;
+  --rim-lo: #cfd8e1;
+  --well: #f2f5f8;
+  --line-soft: #dde4ea;
+  --ink: #22303c;
+  --mute: #4b5a67;
+  --dim: #677683;
+
+  --cyan: #34beed;
+  --cyan-ink: #0a6f9f;
+  --link: #1660a8;
+
+  /* The New 3DS face buttons. */
+  --x: #3d6fe0;
+  --y: #2fa552;
+  --b: #f2b42a;
+  --a: #e5484d;
+  --x-ink: #2856c2;
+  --y-ink: #1d7a3a;
+  --b-ink: #7f5900;
+  --a-ink: #c22f35;
+
+  /* 3dsFM's own palette: Clearwater in dark mode, from source/app/ui.cpp */
+  --app-bg: #15171b;
+  --app-bg-2: #1c1f25;
+  --app-surface: #262a31;
+  --app-raised: #2e333b;
+  --app-primary: #3b97ea;
+  --app-primary-2: #8fd1ff;
+  --app-text: #eceff3;
+  --app-muted: #9aa3af;
+  --app-green: #56e39f;
+  --app-yellow: #f5c542;
+  --app-red: #ff6b5b;
+
+  --pad: 34px;
+  --head-h: 58px;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  /* Overshoots a little and settles, for things that pop. */
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-press: 80ms;
+  --dur-ui: 200ms;
+
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: calc(var(--head-h) + 16px);
+}
+
+body {
+  margin: 0;
+  overflow-x: clip;
+  color: var(--ink);
+  font: 500 15px/1.55 var(--font);
+  -webkit-font-smoothing: antialiased;
+  background: var(--bg);
+}
+
+/* The HOME Menu backdrop: soft diagonal stripes and dots that drift slowly
+   up and to the left. The layer moves by exactly one tile per loop, so the
+   loop is seamless, and it is a transform, so it costs no repaints. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -48px;
+  z-index: -2;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.95) 0 2.3px, transparent 2.9px),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.55) 25%, transparent 25% 50%, rgba(255, 255, 255, 0.55) 50% 75%, transparent 75%);
+  background-size: 48px 48px, 24px 24px;
+  animation: drift 9s linear infinite;
+  will-change: transform;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(ellipse 90% 60% at 50% 0%, rgba(255, 255, 255, 0.8), transparent 70%);
+}
+
+@keyframes drift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-48px, -48px, 0);
+  }
+}
+
+a {
+  color: var(--link);
+  text-underline-offset: 3px;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+code,
+kbd {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  font-weight: 500;
+  background: var(--well);
+  border: 1px solid var(--line-soft);
+  border-radius: 5px;
+  padding: 0.04em 0.35em;
+  overflow-wrap: anywhere;
+}
+
+kbd {
+  background: linear-gradient(#fff, #e9eef2);
+  border-color: #b4c0ca;
+  border-bottom-width: 2px;
+}
+
+/* Elements given their own display (the release sticker, the sound
+   toggle) must still disappear when the script hides them. */
+[hidden] {
+  display: none !important;
+}
+
+.sprite {
+  display: none;
+}
+
+.icon {
+  width: 1.1em;
+  height: 1.1em;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vertical-align: -0.18em;
+}
+
+symbol .fill {
+  fill: currentColor;
+  stroke: none;
+}
+
+.skip {
+  position: absolute;
+  left: -999px;
+  top: 8px;
+  z-index: 20;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--x-ink);
+  color: #fff;
+}
+
+.skip:focus {
+  left: 8px;
+}
+
+:focus-visible {
+  outline: 3px solid #4aa8ff;
+  outline-offset: 2px;
+}
+
+/* -------------------------------------------------------------- Status bar */
+
+.head {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  height: var(--head-h);
+  background: linear-gradient(rgba(255, 255, 255, 0.94), rgba(236, 241, 245, 0.9));
+  border-bottom: 1px solid #b7c3ce;
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.7), 0 6px 18px rgba(30, 50, 70, 0.08);
+  -webkit-backdrop-filter: saturate(1.4) blur(10px);
+  backdrop-filter: saturate(1.4) blur(10px);
+}
+
+.head-in {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: 1040px;
+  height: 100%;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--ink);
+  text-decoration: none;
+  font-weight: 800;
+  font-size: 1.15rem;
+}
+
+.brand img {
+  border-radius: 8px;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.18);
+  transition: transform 360ms var(--spring);
+}
+
+.brand:hover img {
+  transform: rotate(-8deg) scale(1.08);
+}
+
+.brand-3ds {
+  color: var(--cyan-ink);
+}
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin: 0 auto;
+}
+
+.tabs a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  border: 1px solid #b9c5d0;
+  background: linear-gradient(#fff, #eaf0f4);
+  box-shadow: inset 0 1px 0 #fff, 0 2px 0 #c6d0d9;
+  color: var(--ink);
+  font: 700 0.84rem var(--font);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: transform 260ms var(--spring), box-shadow var(--dur-press) var(--ease-out);
+}
+
+.tabs a:hover {
+  transform: translateY(-1px);
+}
+
+.tabs a:active {
+  transform: translateY(2px);
+  box-shadow: inset 0 1px 0 #fff, 0 0 0 #c6d0d9;
+  transition-duration: var(--dur-press);
+}
+
+.tabs a.is-active {
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+  border-color: color-mix(in srgb, var(--tone) 72%, #000);
+  background: linear-gradient(color-mix(in srgb, var(--tone) 62%, #fff), var(--tone));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 2px 0 color-mix(in srgb, var(--tone) 62%, #000);
+}
+
+.tabs a[href="#faq"].is-active {
+  color: #4a3300;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+.tray {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #33414d;
+  font: 400 16px/1 var(--dot);
+}
+
+.wifi {
+  width: 20px;
+  height: 15px;
+  fill: currentColor;
+}
+
+.battery {
+  width: 30px;
+  height: 16px;
+}
+
+.battery .shell {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+
+.battery .nub {
+  fill: currentColor;
+}
+
+.battery .cell {
+  fill: #2fa8e0;
+}
+
+.clock .colon {
+  display: inline-block;
+  margin: 0 1px;
+  animation: blink 1s steps(1) infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (max-width: 860px) {
+  .tray {
+    display: none;
+  }
+  .tabs {
+    margin-right: 0;
+  }
+}
+
+@media (max-width: 600px) {
+  .head-in {
+    gap: 8px;
+    padding: 0 10px;
+  }
+  .brand-name,
+  .tab-more {
+    display: none;
+  }
+  .tabs {
+    gap: 4px;
+  }
+  .tabs a {
+    padding: 4px 10px;
+    font-size: 0.8rem;
+  }
+}
+
+/* -------------------------------------------------------------------- Page */
+
+.page {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 0 20px 34px;
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 0 10px 22px;
+  }
+}
+
+/* ----------------------------------------------------------------- Buttons
+   Chunky and glossy, sitting on a ledge they press down into. */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 7px 18px 8px;
+  border-radius: 999px;
+  border: 1px solid #9fb0be;
+  background: linear-gradient(#fff, #e6edf2);
+  box-shadow: inset 0 1px 0 #fff, 0 3px 0 #b9c6d1, 0 5px 10px rgba(30, 50, 70, 0.1);
+  color: var(--ink);
+  font: 700 13px var(--font);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 260ms var(--spring), box-shadow var(--dur-press) var(--ease-out);
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow: inset 0 1px 0 #fff, 0 0 0 #b9c6d1, 0 1px 2px rgba(30, 50, 70, 0.1);
+  transition-duration: var(--dur-press);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* The big glossy cyan button. */
+.btn-go {
+  padding: 10px 28px 11px;
+  font-size: 16px;
+  color: #fff;
+  border-color: #0a6a94;
+  background: linear-gradient(#8ae3fb 0%, #34beed 48%, #0f98cf 52%, #0b86bd 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 4px 0 #086a96, 0 10px 20px rgba(11, 134, 189, 0.3);
+  text-shadow: 0 1px 1px rgba(0, 45, 70, 0.45);
+}
+
+.btn-go:active:not(:disabled) {
+  transform: translateY(4px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 0 0 #086a96, 0 2px 6px rgba(11, 134, 189, 0.3);
+}
+
+/* -------------------------------------------------------------------- Hero */
+
+.hero {
+  padding: 44px 14px 0;
+  text-align: center;
+}
+
+/* "New!" with the release, stuck on at an angle. */
+.sticker {
+  display: inline-block;
+  margin: 0 0 16px;
+  padding: 5px 15px 4px;
+  border-radius: 999px;
+  border: 2px solid #fff;
+  font: 400 15px/1.2 var(--dot);
+  letter-spacing: 0.05em;
+  color: #fff;
+  background: linear-gradient(#ff7b7f, var(--a));
+  box-shadow: 0 3px 0 #b8343a, 0 8px 16px rgba(200, 50, 60, 0.22);
+  transform: rotate(-4deg);
+}
+
+.hero h1 {
+  max-width: 12.5em;
+  margin: 0 auto 18px;
+  font-size: clamp(2.2rem, 5.6vw, 3.6rem);
+  line-height: 1.08;
+  letter-spacing: -0.015em;
+}
+
+/* A sticker-style outline, like DS box art. */
+.accent {
+  color: #17a3da;
+  text-shadow:
+    3px 0 #fff, -3px 0 #fff, 0 3px #fff, 0 -3px #fff,
+    2px 2px #fff, -2px 2px #fff, 2px -2px #fff, -2px -2px #fff,
+    0 7px 0 rgba(15, 95, 140, 0.2);
+}
+
+.sub {
+  max-width: 44em;
+  margin: 0 auto 24px;
+  font-size: 1.05rem;
+  color: var(--mute);
+}
+
+@media (max-width: 560px) {
+  .sub br {
+    display: none;
+  }
+}
+
+.cta {
+  margin-bottom: 26px;
+}
+
+/* ------------------------------------------------------------- The device
+   A real photo. The two screens are HTML drawn at native 3DS size (400 x 240
+   and 320 x 240 px) and projected onto the photographed screens by each
+   photo's matrices, which scripts/screen-map computed for the photo at
+   --photo-w pixels wide. --k rescales them to the rendered width. */
+
+.device {
+  position: relative;
+  margin: 0 auto;
+  perspective: 1600px;
+}
+
+/* The hero: seen from the front at an angle (1356 x 1177). */
+.device-angled {
+  width: min(100%, 860px);
+  padding-bottom: 12px;
+}
+
+.device-angled .device-stage {
+  aspect-ratio: 1356 / 1177;
+  --photo-w: 1356;
+  --m-top: matrix3d(1.025661, 0.317498, 0, -0.000237, -0.417270, 1.468451, 0, 0.000048, 0, 0, 1, 0, 611.231497, 133.366913, 0, 1);
+  --m-bottom: matrix3d(1.063699, 0.348492, 0, -0.000208, -1.145845, 0.471260, 0, -0.000304, 0, 0, 1, 0, 493.838504, 590.464957, 0, 1);
+}
+
+/* The install section: a dead-front New 3DS render (736 x 736), whose
+   screens are axis-aligned, so the matrices are plain scales. */
+.device-front {
+  width: min(100%, 760px);
+}
+
+.device-front .device-stage {
+  aspect-ratio: 1 / 1;
+  --photo-w: 736;
+  --m-top: matrix3d(0.8875, 0, 0, 0, 0, 0.883333, 0, 0, 0, 0, 1, 0, 191.5, 114.5, 0, 1);
+  --m-bottom: matrix3d(0.882813, 0, 0, 0, 0, 0.882917, 0, 0, 0, 0, 1, 0, 227.5, 412.6, 0, 1);
+}
+
+/* --k is (rendered width / --photo-w), set by app.js: CSS cannot divide a
+   length by a length to get the plain number scale() needs. Until it is set
+   the screens stay hidden, so the photo's own blank screens show instead. */
+.device-stage {
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 600ms var(--ease-out);
+  will-change: transform;
+}
+
+.screen {
+  display: none;
+}
+
+.device-stage.is-mapped .screen {
+  display: block;
+}
+
+.device-photo {
+  display: block;
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 26px 30px rgba(20, 40, 60, 0.28));
+}
+
+.screen {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: hidden;
+  color: var(--app-text);
+  font-family: var(--font);
+  transform-origin: 0 0;
+  backface-visibility: hidden;
+}
+
+.screen-top {
+  width: 400px;
+  height: 240px;
+  background: linear-gradient(90deg, var(--app-bg), var(--app-bg-2));
+  transform: scale(var(--k)) var(--m-top);
+}
+
+.screen-bottom {
+  width: 320px;
+  height: 240px;
+  background: var(--app-bg);
+  transform: scale(var(--k)) var(--m-bottom);
+}
+
+/* Glass: a faint highlight across each screen so they sit in the photo. */
+.screen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(105deg, rgba(255, 255, 255, 0.13) 0%, rgba(255, 255, 255, 0) 45%);
+}
+
+/* Screen pixels: --x/--y/--w/--h are 3DS pixels and --s is the scale
+   ui.cpp draws text at. 24 px is the system font's cell height at scale 1. */
+.screen .t,
+.screen .r {
+  position: absolute;
+  left: calc(var(--x) * 1px);
+  top: calc(var(--y) * 1px);
+}
+
+.screen .t {
+  font-size: calc(var(--s) * 24px);
+  line-height: 1.25;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.screen .r {
+  width: calc(var(--w) * 1px);
+  height: calc(var(--h) * 1px);
+}
+
+.r-fill {
+  background: linear-gradient(180deg, var(--app-primary-2), var(--app-primary));
+}
+
+.screen .r {
+  border-radius: calc(var(--rad, 0) * 1px);
+}
+
+.screen .t-bold {
+  font-weight: 800;
+}
+
+.screen .r-fill {
+  width: calc(var(--w) * 1px * var(--p, 0.7));
+}
+
+.t-end {
+  transform: translateX(-100%);
+}
+
+.t-mid {
+  transform: translateX(-50%);
+}
+
+.t-muted {
+  color: var(--app-muted);
+}
+
+.t-green {
+  color: var(--app-green);
+}
+
+.t-warn {
+  color: var(--app-yellow);
+}
+
+/* Power-on: the screens light up, the 3dsFM logo pops in, and the boot
+   screen fades away to the app. Only with the script (the screens need it
+   anyway) and only when motion is welcome. */
+.boot {
+  display: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .js .boot {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 10px;
+    background: #000;
+    pointer-events: none;
+    animation: boot-screen 2.6s var(--ease-out) forwards;
+  }
+
+  .boot-top img {
+    width: 64px;
+    height: 64px;
+    border-radius: 14px;
+    animation: boot-logo 2.6s var(--ease-out) both;
+  }
+
+  .boot-top span {
+    font: 800 30px/1 var(--font);
+    color: #fff;
+    animation: boot-logo 2.6s var(--ease-out) 90ms both;
+  }
+
+  .js .boot-bottom {
+    grid-auto-flow: column;
+    gap: 10px;
+  }
+
+  .boot-bottom i {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: var(--app-primary);
+    animation: boot-dot 0.7s ease-in-out infinite alternate;
+  }
+
+  .boot-bottom i:nth-child(2) { animation-delay: 0.15s; }
+  .boot-bottom i:nth-child(3) { animation-delay: 0.3s; }
+}
+
+@keyframes boot-screen {
+  0%, 14% {
+    background: #000;
+  }
+  26% {
+    background: var(--app-bg);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+@keyframes boot-logo {
+  0%, 24% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  38% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+  48%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes boot-dot {
+  from {
+    opacity: 0.25;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+/* Doodles drawn over the hero photo, in its own pixel coordinates, like a
+   Swapnote scribbled on a picture. They draw themselves in after boot. */
+.doodles {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.doodle path {
+  fill: none;
+  stroke: var(--pen);
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.doodle text {
+  font: 700 54px var(--hand);
+  fill: var(--pen);
+}
+
+.pen-blue { --pen: #2b6de0; }
+.pen-red { --pen: #e5484d; }
+.pen-green { --pen: #1f9a52; }
+
+.doodle-stars path {
+  fill: #ffd34d;
+  stroke: #e0a21a;
+  stroke-width: 4;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* They point at the live screens, so they go when those can't run, and
+   when the photo is too small to write on. */
+html:not(.js) .doodles,
+html:not(.js) .tray {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .doodles {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .reveal-ready .doodle path {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+  }
+
+  .reveal-ready .doodle text {
+    opacity: 0;
+  }
+
+  .reveal-ready .device.is-in .doodle text {
+    opacity: 1;
+    transition: opacity 450ms ease calc(1500ms + var(--d) * 380ms);
+  }
+
+  .reveal-ready .device.is-in .doodle path {
+    stroke-dashoffset: 0;
+    transition: stroke-dashoffset 650ms var(--ease-out) calc(1700ms + var(--d) * 380ms);
+  }
+
+  .reveal-ready .device.is-in .doodle path + path {
+    transition: stroke-dashoffset 220ms var(--ease-out) calc(2250ms + var(--d) * 380ms);
+  }
+
+  .reveal-ready .doodle-stars path {
+    stroke-dashoffset: 0;
+    transform: scale(0);
+  }
+
+  .reveal-ready .device.is-in .doodle-stars path {
+    transform: scale(1);
+    transition: transform 520ms var(--spring) 2.7s;
+    animation: twinkle 2.4s ease-in-out 3.3s infinite;
+  }
+
+  .reveal-ready .device.is-in .doodle-stars path + path {
+    transition-delay: 2.85s;
+    animation-delay: 4.1s;
+  }
+}
+
+@keyframes twinkle {
+  0%, 100% {
+    transform: scale(1) rotate(0deg);
+  }
+  50% {
+    transform: scale(0.72) rotate(18deg);
+  }
+}
+
+/* ---------------------------------------------------------------- Sections
+   Each section is a rounded panel on the backdrop, labelled by a tab in its
+   face button's colour. */
+
+.panel {
+  position: relative;
+  margin-top: 46px;
+  padding: 54px var(--pad) 46px;
+  background: var(--panel);
+  border: 1px solid var(--rim);
+  border-radius: 30px;
+  box-shadow: inset 0 2px 0 #fff, 0 5px 0 var(--rim-lo), 0 20px 40px rgba(36, 56, 78, 0.1);
+}
+
+.tone-x { --tone: var(--x); --tone-ink: var(--x-ink); }
+.tone-y { --tone: var(--y); --tone-ink: var(--y-ink); }
+.tone-b { --tone: var(--b); --tone-ink: var(--b-ink); }
+.tone-a { --tone: var(--a); --tone-ink: var(--a-ink); }
+
+.section-head {
+  max-width: 40rem;
+  margin: 0 auto 30px;
+  text-align: center;
+}
+
+.eyebrow {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 5px 18px;
+  border-radius: 999px;
+  border: 2px solid var(--tone);
+  background: #fff;
+  box-shadow: 0 3px 0 color-mix(in srgb, var(--tone) 45%, #fff);
+  font: 400 15px/1.2 var(--dot);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--tone-ink);
+  transform: translate(-50%, -50%);
+}
+
+.section-head h2 {
+  font-size: clamp(1.6rem, 3.4vw, 2.25rem);
+}
+
+.section-sub {
+  margin: 12px auto 0;
+  color: var(--mute);
+}
+
+@media (max-width: 640px) {
+  .panel {
+    --pad: 16px;
+    margin-top: 40px;
+    padding-top: 46px;
+    border-radius: 24px;
+  }
+}
+
+.fine {
+  margin: 14px 0 0;
+  font-size: 0.82rem;
+  color: var(--dim);
+}
+
+.fine-center {
+  max-width: 46em;
+  margin: 22px auto 0;
+  text-align: center;
+}
+
+/* ------------------------------------------------- Features: the HOME Menu
+   Without the script this is a grid of cards. With it, the icons sit on a
+   touch screen and the selected one's demo shows on the top screen above. */
+
+.home-screen {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 14px;
+}
+
+.feature {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+}
+
+.feature-text {
+  padding: 10px 14px 14px;
+}
+
+.feature-text h3 {
+  font-size: 1rem;
+}
+
+.feature-text p {
+  margin: 4px 0 0;
+  font-size: 0.86rem;
+  color: var(--mute);
+}
+
+.home-bottom {
+  display: none;
+}
+
+/* The demos are sized in em off one font size, which follows the card or
+   screen width (cqi), so the same markup works at any size. */
+.feature-demo {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.45em;
+  aspect-ratio: 16 / 8;
+  padding: 0.95em 1.15em;
+  overflow: hidden;
+  font-size: 5.2cqi;
+  line-height: 1.25;
+  color: var(--app-text);
+  background: linear-gradient(90deg, var(--app-bg), var(--app-bg-2));
+}
+
+.m-line {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.m-small {
+  font-size: 0.85em;
+  white-space: normal;
+}
+
+.m-muted { color: var(--app-muted); }
+.m-green { color: var(--app-green); }
+.m-warn { color: var(--app-yellow); }
+.m-cyan { color: var(--app-primary); }
+
+.m-bar {
+  display: block;
+  height: 0.92em;
+  background: var(--app-raised);
+}
+
+.m-bar i {
+  display: block;
+  height: 100%;
+  background: var(--app-primary);
+}
+
+.m-buttons {
+  display: flex;
+  gap: 0.38em;
+  margin-top: 0.28em;
+}
+
+.m-buttons b {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  height: 2.05em;
+  font-size: 0.78em;
+  font-weight: 700;
+  background: var(--app-raised);
+  box-shadow: 0.12em 0.17em 0 rgba(0, 0, 0, 0.35);
+}
+
+.m-buttons b.on {
+  color: var(--app-bg);
+  background: var(--app-primary);
+}
+
+.feature-demo.m-list {
+  justify-content: flex-start;
+  gap: 0.22em;
+  padding: 0.75em 0.95em;
+}
+
+.m-row {
+  display: block;
+  padding: 0.26em 0.45em;
+  font-size: 0.9em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.m-row.on {
+  background: var(--app-raised);
+  box-shadow: inset 0.19em 0 0 var(--app-primary);
+}
+
+/* The console look. The two screens sit in dark glass bezels. */
+.js .home {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+}
+
+.js .home-top,
+.js .home-bottom {
+  display: block;
+  padding: 10px;
+  border-radius: 24px;
+  background: linear-gradient(#46525e, #262f38);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.25),
+    0 4px 0 #1b222a,
+    0 14px 28px rgba(20, 32, 44, 0.22);
+}
+
+.js .home-top {
+  width: min(100%, 640px);
+}
+
+.js .home-bottom {
+  width: min(100%, 520px);
+}
+
+.js .home-screen {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  overflow: hidden;
+  border-radius: 14px;
+  background: linear-gradient(90deg, var(--app-bg), var(--app-bg-2));
+}
+
+/* The app's own title bar along the top. */
+.home-app-bar {
+  display: none;
+}
+
+.js .home-app-bar {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 12px 18px 12px;
+  font-size: 19px;
+  color: var(--app-text);
+}
+
+.js .home-app-bar::after {
+  content: "";
+  position: absolute;
+  left: 18px;
+  bottom: 4px;
+  width: 44px;
+  height: 3px;
+  background: var(--app-primary);
+}
+
+.home-app-state {
+  font-size: 14px;
+  color: var(--app-muted);
+}
+
+/* All six share one grid cell, so the screen is as tall as the tallest and
+   never jumps; only the selected one is shown. */
+.js .home-screen {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.js .home-screen > .feature {
+  grid-area: 2 / 1;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(10px) scale(0.98);
+  transition: opacity 200ms var(--ease-out), transform 420ms var(--spring), visibility 0s linear 200ms;
+}
+
+.js .home-screen > .feature.is-on {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity 260ms var(--ease-out) 60ms, transform 480ms var(--spring) 60ms, visibility 0s;
+}
+
+.js .home .feature-demo {
+  flex: 1;
+  aspect-ratio: 16 / 6;
+  padding: 1em 1.3em 0.7em;
+  font-size: clamp(12px, 3.4cqi, 22px);
+  background: none;
+}
+
+.js .home .feature-demo.m-list {
+  padding: 0.8em 1.1em 0.5em;
+}
+
+/* The banner label along the bottom of the top screen. */
+.js .home .feature-text {
+  margin: 0 12px 12px;
+  padding: 10px 16px 12px;
+  border-radius: 14px;
+  background: linear-gradient(#fff, #eef3f6);
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.3);
+}
+
+.js .home-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+  padding: 16px 10px 12px;
+  border-radius: 14px;
+  background:
+    radial-gradient(circle, #cdd8e1 1.3px, transparent 1.8px) 0 0 / 14px 14px,
+    linear-gradient(#f6f9fb, #e8eef3);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.app-icon {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app-icon:focus-visible {
+  outline: none;
+}
+
+.app-glyph {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  overflow: hidden;
+  border-radius: 15px;
+  color: #fff;
+  background: linear-gradient(color-mix(in srgb, var(--tint) 62%, #fff), var(--tint) 55%, color-mix(in srgb, var(--tint) 84%, #000));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.15),
+    0 3px 0 color-mix(in srgb, var(--tint) 58%, #000),
+    0 6px 10px rgba(0, 0, 0, 0.12);
+  transition: transform 380ms var(--spring);
+}
+
+/* The gloss across the top half of each icon. */
+.app-glyph::before {
+  content: "";
+  position: absolute;
+  left: 7%;
+  right: 7%;
+  top: 4%;
+  height: 46%;
+  border-radius: 12px 12px 45% 45% / 12px 12px 16px 16px;
+  background: linear-gradient(rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.06));
+}
+
+.app-glyph .icon {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  stroke-width: 2.3;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.25));
+}
+
+.app-label {
+  font: 400 12px/1.2 var(--dot);
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+.app-icon:hover .app-glyph {
+  transform: translateY(-2px);
+}
+
+.app-icon:active .app-glyph {
+  transform: scale(0.9);
+  transition-duration: 90ms;
+}
+
+.app-icon[aria-selected="true"] .app-glyph {
+  transform: translateY(-3px) scale(1.07);
+}
+
+.app-icon[aria-selected="true"] .app-label {
+  color: var(--ink);
+}
+
+.app-icon:focus-visible .app-label {
+  border-radius: 4px;
+  outline: 2px solid #4aa8ff;
+  outline-offset: 2px;
+}
+
+/* The HOME Menu's selection frame: glides to the selected icon and pulses. */
+.home-cursor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  border: 3px solid #34c8f0;
+  border-radius: 20px;
+  background: rgba(52, 200, 240, 0.12);
+  pointer-events: none;
+  opacity: 0;
+}
+
+.home-cursor.is-ready {
+  opacity: 1;
+  transition: transform 460ms var(--spring), width 300ms var(--ease-out), height 300ms var(--ease-out);
+  animation: cursor-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes cursor-pulse {
+  50% {
+    border-color: #9eeaff;
+    box-shadow: 0 0 0 5px rgba(52, 200, 240, 0.18);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .js .home .feature.is-on .m-bar i {
+    animation: bar-grow 1.4s var(--ease-out) both;
+  }
+}
+
+@keyframes bar-grow {
+  from {
+    width: 8%;
+  }
+}
+
+@media (max-width: 560px) {
+  .js .home-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    row-gap: 14px;
+  }
+  .js .home .feature-demo {
+    aspect-ratio: 16 / 8;
+    font-size: clamp(14px, 4.8cqi, 22px);
+  }
+  .js .home-app-bar {
+    font-size: 16px;
+    padding: 10px 14px;
+  }
+  .js .home-app-bar::after {
+    left: 14px;
+  }
+  .js .home-top,
+  .js .home-bottom {
+    padding: 8px;
+    border-radius: 20px;
+  }
+}
+
+.also {
+  max-width: 44em;
+  margin: 26px auto 0;
+  text-align: center;
+  font-size: 0.86rem;
+  color: var(--dim);
+}
+
+/* ----------------------------------------------- Send a link: PictoChat
+   Ruled paper, and messages framed in their sender's colour with the name in
+   the corner. */
+
+.chat {
+  max-width: 880px;
+  margin: 0 auto;
+  overflow: hidden;
+  border: 2px solid #a9bccb;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 4px 0 #cfdbe5;
+}
+
+.chat-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-bottom: 2px solid #a9bccb;
+  background: linear-gradient(#f9fbfd, #e2eaf1);
+  font: 400 15px/1.2 var(--dot);
+  color: #3a4a58;
+}
+
+.chat-room {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  color: #fff;
+  background: var(--y);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 2px 0 #1d7a3a;
+}
+
+.chat-who {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--dim);
+}
+
+.chat-log {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 22px 26px;
+  align-items: start;
+  padding: 26px 22px 28px;
+  background: #fff repeating-linear-gradient(transparent 0 27px, #dbe8f3 27px 28px);
+}
+
+@media (max-width: 720px) {
+  .chat-log {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 22px 14px 24px;
+  }
+}
+
+.msg {
+  position: relative;
+  margin: 0;
+  padding: 36px 16px 16px;
+  border: 2px solid var(--who);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 3px 0 color-mix(in srgb, var(--who) 30%, #fff);
+}
+
+.msg-you {
+  --who: #2fa552;
+}
+
+.msg-app {
+  --who: #1aa6dc;
+  justify-self: end;
+  margin-top: 56px;
+}
+
+@media (max-width: 720px) {
+  .msg-app {
+    justify-self: center;
+    margin-top: 0;
+  }
+}
+
+.msg-name {
+  position: absolute;
+  left: -2px;
+  top: -2px;
+  padding: 4px 12px 3px;
+  border-radius: 12px 0 10px 0;
+  font: 400 14px/1.2 var(--dot);
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: var(--who);
+}
+
+.send-form label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.send-form input {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid #9fb0be;
+  background: #fff;
+  box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.1);
+  color: var(--ink);
+  font: 500 0.92rem var(--mono);
+}
+
+.send-form input:focus {
+  outline: none;
+  border-color: var(--y);
+  box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.1), 0 0 0 3px rgba(47, 165, 82, 0.28);
+}
+
+.status {
+  min-height: 1.5em;
+  margin: 8px 2px 12px;
+  font-size: 0.86rem;
+  color: var(--dim);
+}
+
+.status.ok {
+  color: var(--y-ink);
+  font-weight: 700;
+}
+
+.status.error {
+  color: #9a4a00;
+  font-weight: 700;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.qr-frame {
+  flex: none;
+  margin: 0;
+  padding: 8px;
+  line-height: 0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.qr-frame img,
+.qr-frame svg {
+  display: block;
+  width: 150px;
+  height: 150px;
+}
+
+.qr-large svg,
+.qr-large .qr-placeholder {
+  width: 220px;
+  height: 220px;
+}
+
+.qr-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  line-height: 1.4;
+  font: 400 14px var(--dot);
+  color: #8a96a1;
+  border-radius: 6px;
+  background: repeating-linear-gradient(45deg, #f6f8fa 0 8px, #ebf0f4 8px 16px);
+}
+
+.qr-placeholder .icon {
+  width: 44px;
+  height: 44px;
+  stroke-width: 1.6;
+}
+
+/* ------------------------------------------- FAQ: the Notifications app */
+
+.faq {
+  max-width: 720px;
+  margin: 0 auto;
+  overflow: hidden;
+  border: 2px solid #e2cf8f;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 4px 0 #efe2b5;
+}
+
+.faq-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-bottom: 2px solid #e2cf8f;
+  background: linear-gradient(#fff9e2, #fbebb4);
+  font: 400 15px/1.2 var(--dot);
+  color: #6b4f00;
+}
+
+.faq-count {
+  margin-left: auto;
+  padding: 2px 10px 1px;
+  border-radius: 999px;
+  font-size: 13px;
+  color: #fff;
+  background: var(--y);
+}
+
+.faq-count:empty {
+  display: none;
+}
+
+.faq-count.is-done {
+  color: var(--mute);
+  background: #dfe5ea;
+}
+
+.faq details + details {
+  border-top: 1px solid #efe7cc;
+}
+
+.faq summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 16px;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 700;
+  font-size: 0.95rem;
+  transition: background var(--dur-ui) var(--ease-out);
+}
+
+.faq summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq summary:hover {
+  background: #eef9ff;
+}
+
+/* A chevron that turns as the row opens. */
+.faq summary::after {
+  content: "";
+  flex: none;
+  width: 9px;
+  height: 9px;
+  margin: 0 4px 3px 2px;
+  border-right: 2.5px solid #9aa8b4;
+  border-bottom: 2.5px solid #9aa8b4;
+  transform: rotate(-45deg);
+  transition: transform 300ms var(--spring);
+}
+
+.faq details[open]:not(.is-closing) summary::after {
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.note-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  color: #6b4a00;
+  background: linear-gradient(#ffe08a, var(--b));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 2px 0 #c99415;
+  transition: background var(--dur-ui) var(--ease-out);
+}
+
+.note-icon .icon {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  transition: opacity 180ms var(--ease-out), transform 320ms var(--spring);
+}
+
+.note-icon .i-open,
+.faq details[open]:not(.is-closing) .note-icon .i-closed {
+  opacity: 0;
+  transform: scale(0.6);
+}
+
+.faq details[open]:not(.is-closing) .note-icon .i-open {
+  opacity: 1;
+  transform: none;
+}
+
+.faq .is-read .note-icon {
+  color: #5d6b77;
+  background: linear-gradient(#f6f8fa, #dfe5ea);
+  box-shadow: inset 0 1px 0 #fff, 0 2px 0 #b9c4ce;
+}
+
+.note-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.note-new {
+  display: none;
+}
+
+.js .note-new {
+  display: inline-block;
+  flex: none;
+  padding: 2px 8px 1px;
+  border-radius: 999px;
+  font: 400 12px/1.3 var(--dot);
+  letter-spacing: 0.06em;
+  color: #fff;
+  background: var(--y);
+  box-shadow: 0 0 0 3px rgba(47, 165, 82, 0.18);
+}
+
+.js .is-read .note-new {
+  opacity: 0;
+  transform: scale(0);
+}
+
+.faq.is-ready .note-new {
+  transition: transform 340ms var(--spring), opacity 200ms var(--ease-out);
+}
+
+.faq details p {
+  margin: 0;
+  padding: 0 20px 16px 62px;
+  font-size: 0.9rem;
+  color: var(--mute);
+}
+
+@media (max-width: 560px) {
+  .faq details p {
+    padding-left: 18px;
+  }
+}
+
+/* ----------------------------------------------------------------- Install
+   Two tabs pick the method; the 3DS shows its QR code on the top screen and
+   the details on the touch screen. Everything inside a screen is laid out in
+   3DS pixels (400 x 240 and 320 x 240) and scaled with the screen. */
+
+.installer {
+  display: grid;
+  justify-items: center;
+}
+
+/* A segmented control whose glossy highlight springs to the selected tab. */
+.picker {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: min(100%, 560px);
+  margin-bottom: 18px;
+  overflow: hidden;
+  border: 1px solid #9fb0be;
+  border-radius: 16px;
+  background: linear-gradient(#fff, #e9eff3);
+  box-shadow: inset 0 1px 0 #fff, 0 3px 0 #c3ced8;
+}
+
+.picker::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 50%;
+  background: linear-gradient(#8ae3fb 0%, #34beed 48%, #0f98cf 52%, #0b86bd 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  transition: transform 460ms var(--spring);
+}
+
+.picker[data-active="3dsx"]::before {
+  transform: translateX(100%);
+}
+
+.pick {
+  position: relative;
+  display: grid;
+  gap: 1px;
+  padding: 9px 14px 10px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition: color var(--dur-ui) var(--ease-out);
+}
+
+.pick + .pick {
+  border-left: 1px solid #c4cfd8;
+}
+
+.pick:hover:not([aria-selected="true"]) {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.pick:active {
+  transform: translateY(1px);
+}
+
+.pick[aria-selected="true"] {
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(0, 45, 70, 0.45);
+}
+
+.pick:focus-visible {
+  outline-offset: -4px;
+  border-radius: 12px;
+}
+
+.pick-title {
+  font-weight: 800;
+  font-size: 0.98rem;
+}
+
+.pick-sub {
+  font-size: 0.78rem;
+  opacity: 0.85;
+}
+
+@media (max-width: 480px) {
+  .pick {
+    padding: 8px 8px 9px;
+  }
+  .pick-title {
+    font-size: 0.9rem;
+  }
+  .pick-sub {
+    font-size: 0.72rem;
+  }
+}
+
+.install-panel {
+  display: grid;
+  justify-items: center;
+  width: 100%;
+}
+
+/* Without the script the tabs can't switch and the screens aren't mapped,
+   so the <noscript> list stands in for both. */
+html:not(.js) .picker,
+html:not(.js) .install-panel {
+  display: none;
+}
+
+/* The notification LED on the hinge, blinking blue as if a SpotPass
+   download were waiting. Placed in the render's own pixels. */
+.led {
+  position: absolute;
+  left: calc(637 * 100% / 736);
+  top: calc(367 * 100% / 736);
+  width: calc(11 * 100% / 736);
+  aspect-ratio: 1;
+  border-radius: 30%;
+  background: #6ccfff;
+  box-shadow: 0 0 4px 1px #5ec8ff, 0 0 14px 5px rgba(94, 200, 255, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.device-stage.is-mapped .led {
+  opacity: 0.9;
+  animation: led 2.8s ease-in-out infinite;
+}
+
+@keyframes led {
+  0%, 100% { opacity: 0.12; }
+  8% { opacity: 1; }
+  18% { opacity: 0.15; }
+  28% { opacity: 1; }
+  42% { opacity: 0.12; }
+}
+
+.view {
+  position: absolute;
+  inset: 0;
+}
+
+.view[hidden] {
+  display: none;
+}
+
+/* Top screen: QR code on the left, what to scan it with on the right. */
+.qr-view {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 20px 0 22px;
+}
+
+.qr-tile {
+  flex: none;
+  margin: 0;
+  padding: 8px;
+  line-height: 0;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+
+.qr-tile img {
+  display: block;
+  width: 184px;
+  height: 184px;
+  image-rendering: pixelated;
+}
+
+.qr-side {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.qr-kicker {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--app-muted);
+}
+
+.qr-app {
+  font-size: 36px;
+  line-height: 1;
+  font-weight: 800;
+  color: var(--app-primary);
+}
+
+.qr-path {
+  font-size: 15px;
+  line-height: 1.35;
+  color: var(--app-text);
+}
+
+.qr-file {
+  justify-self: start;
+  margin-top: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font: 500 12px var(--mono);
+  color: var(--app-text);
+  background: var(--app-raised);
+  box-shadow: inset 3px 0 0 var(--app-primary);
+}
+
+/* Touch screen: title, file, steps and two buttons. */
+.info-view {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 13px 15px 14px;
+}
+
+.info-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.info-head h3 {
+  font-size: 18px;
+  color: var(--app-text);
+}
+
+.chip {
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--app-bg);
+  background: var(--app-green);
+}
+
+.info-meta {
+  margin: 0;
+  font-size: 12px;
+  color: var(--app-muted);
+}
+
+.size-inline:not(:empty)::before {
+  content: " · ";
+}
+
+.info-steps {
+  display: grid;
+  gap: 6px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.info-steps li {
+  position: relative;
+  padding-left: 25px;
+  font-size: 14px;
+  line-height: 1.3;
+  color: var(--app-text);
+  counter-increment: step;
+}
+
+.info-steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--app-bg);
+  background: var(--app-primary);
+}
+
+.info-steps b {
+  color: #fff;
+}
+
+.info-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: auto;
+}
+
+/* Buttons in the app's own style. */
+.sbtn {
+  display: grid;
+  place-items: center;
+  height: 36px;
+  border: 0;
+  border-radius: 3px;
+  font: 700 14px var(--font);
+  letter-spacing: 0.02em;
+  color: var(--app-text);
+  text-decoration: none;
+  background: var(--app-raised);
+  box-shadow: 2px 3px 0 rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  transition: transform var(--dur-press) var(--ease-out), box-shadow var(--dur-press) var(--ease-out), filter var(--dur-ui) var(--ease-out);
+}
+
+.sbtn:hover {
+  filter: brightness(1.15);
+}
+
+.sbtn:active {
+  transform: translate(2px, 3px);
+  box-shadow: 0 0 0 rgba(0, 0, 0, 0.4);
+}
+
+.sbtn-go {
+  color: var(--app-bg);
+  background: var(--app-primary);
+  box-shadow: inset 5px 0 0 #c5f8fc, 2px 3px 0 rgba(0, 0, 0, 0.4);
+}
+
+.sbtn-go:active {
+  box-shadow: inset 5px 0 0 #c5f8fc;
+}
+
+.sbtn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+/* Phones: the console is too small to read its touch screen, so app.js
+   moves the steps out into .install-steps, and the touch screen points
+   down at them. */
+.split-note {
+  display: none;
+}
+
+.is-split .split-note {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 6px;
+  color: var(--app-primary);
+}
+
+.split-note b {
+  font-size: 64px;
+  line-height: 1;
+}
+
+.split-note span {
+  font: 800 34px/1 var(--font);
+  color: var(--app-text);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .is-split .split-note b {
+    animation: nudge 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes nudge {
+  50% {
+    transform: translateY(10px);
+  }
+}
+
+.install-steps {
+  width: min(100%, 440px);
+}
+
+.install-steps:empty {
+  display: none;
+}
+
+.install-steps .view {
+  position: relative;
+  inset: auto;
+  border-radius: 18px;
+  background: var(--app-bg);
+  box-shadow: 0 4px 0 #050c14, 0 12px 22px rgba(8, 19, 31, 0.2);
+}
+
+.install-steps .info-view {
+  gap: 10px;
+  padding: 16px;
+}
+
+.install-steps .info-actions {
+  margin-top: 6px;
+}
+
+.nojs-downloads {
+  display: grid;
+  gap: 14px;
+  max-width: 640px;
+  margin: 18px auto 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nojs-downloads img {
+  display: block;
+  margin-top: 6px;
+}
+
+.notice {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  max-width: 760px;
+  margin: 26px auto 0;
+  padding: 14px 18px;
+  border-radius: 18px;
+  border: 2px solid #f0d27a;
+  background: #fff8dc;
+  box-shadow: 0 3px 0 #f3e3ac;
+  font-size: 0.9rem;
+}
+
+.notice-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  color: #5a3d00;
+  background: linear-gradient(#ffe08a, var(--b));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 2px 0 #c99415;
+}
+
+.notice p {
+  margin: 0;
+}
+
+/* --------------------------------------------- Footer: the back of the box */
+
+.foot {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 26px;
+  align-items: center;
+  padding: 26px 30px;
+}
+
+.rating {
+  display: flex;
+  align-items: stretch;
+  border: 3px solid #111;
+  background: #fff;
+  color: #111;
+}
+
+.rating-box {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  justify-items: center;
+  width: 76px;
+  border-right: 3px solid #111;
+}
+
+.rating-box b {
+  align-self: center;
+  padding-top: 4px;
+  font: 800 46px/1 var(--font);
+}
+
+.rating-box span {
+  width: 100%;
+  padding: 4px 0;
+  text-align: center;
+  font: 800 9px/1 var(--font);
+  letter-spacing: 0.06em;
+  color: #fff;
+  background: #111;
+}
+
+.rating-notes {
+  align-self: center;
+  margin: 0;
+  padding: 8px 12px;
+  list-style: none;
+  font: 700 11px/1.55 var(--font);
+}
+
+.foot-main {
+  display: grid;
+  gap: 10px;
+}
+
+.foot-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 18px;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.foot-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.sound-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid #9fb0be;
+  background: linear-gradient(#fff, #e9eef2);
+  box-shadow: 0 2px 0 #c3ced8;
+  color: var(--ink);
+  font: 700 0.8rem var(--font);
+  cursor: pointer;
+}
+
+.sound-toggle[aria-pressed="true"] {
+  color: var(--cyan-ink);
+  border-color: var(--cyan);
+}
+
+.legal {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.6;
+  color: var(--dim);
+}
+
+@media (max-width: 720px) {
+  .foot {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    padding: 24px 18px;
+    text-align: center;
+  }
+  .foot-links {
+    justify-content: center;
+  }
+}
+
+/* ----------------------------------------------------------- QR dialog */
+
+dialog {
+  max-width: min(92vw, 620px);
+  padding: 22px;
+  border: 1px solid var(--rim);
+  border-radius: 26px;
+  background: #fff;
+  color: var(--ink);
+  text-align: center;
+  box-shadow: inset 0 2px 0 #fff, 0 6px 0 var(--rim-lo), 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+
+dialog::backdrop {
+  background: rgba(30, 40, 52, 0.55);
+  backdrop-filter: blur(3px);
+}
+
+.qr-dialog svg {
+  display: block;
+  width: min(78vw, 68vh, 500px);
+  height: auto;
+  aspect-ratio: 1;
+  margin: 0 auto;
+}
+
+.dialog-url {
+  margin: 12px 0 16px;
+  font: 500 0.82rem var(--mono);
+  color: var(--dim);
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------- Reveals
+   Hiding is gated on .reveal-ready, which app.js sets, so nothing is ever
+   hidden when the script does not run. Panels pop up with a little bounce. */
+
+@media (prefers-reduced-motion: no-preference) {
+  .reveal-ready .reveal {
+    opacity: 0;
+    transform: translateY(22px) scale(0.98);
+    transition: opacity 450ms var(--ease-out), transform 700ms var(--spring);
+  }
+
+  .reveal-ready .reveal.is-in {
+    opacity: 1;
+    transform: none;
+  }
+
+  .sticker:not([hidden]) {
+    animation: sticker-in 650ms var(--spring) both;
+  }
+}
+
+@keyframes sticker-in {
+  from {
+    transform: rotate(-16deg) scale(0);
+  }
+  to {
+    transform: rotate(-4deg) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  body::before,
+  .clock .colon,
+  .home-cursor.is-ready {
+    animation: none;
+  }
+  .device-stage.is-mapped .led {
+    animation: none;
+    opacity: 0.9;
+  }
+  .btn,
+  .tabs a,
+  .brand img,
+  .device-stage,
+  .app-glyph,
+  .home-cursor.is-ready,
+  .js .home-screen > .feature,
+  .picker::before,
+  .faq summary::after,
+  .note-icon .icon,
+  .faq.is-ready .note-new {
+    transition: none;
+  }
+}
+
+
+/* ----------------------------------------------- Add music: the folder tree */
+.tree {
+  margin: 0.4em 0 0;
+  padding: 0.9em 1.1em;
+  border-radius: 12px;
+  background: var(--well);
+  font: 500 0.92em/1.6 var(--mono);
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.tree b {
+  color: var(--cyan-ink);
+  font-weight: 700;
+}
+
+.msg-app .tree {
+  background: rgba(255, 255, 255, 0.72);
+}

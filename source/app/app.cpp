@@ -1,0 +1,2491 @@
+#include "app.hpp"
+
+#include "art.hpp"
+#include "audio.hpp"
+#include "library.hpp"
+#include "platform.hpp"
+#include "queue.hpp"
+#include "time_format.hpp"
+#include "ui.hpp"
+
+#include <3ds.h>
+#include <citro2d.h>
+
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <functional>
+#include <map>
+#include <string>
+#include <vector>
+
+using ui::Icon;
+
+namespace {
+
+constexpr float TopW = 400.0f;
+constexpr float TopH = 240.0f;
+constexpr float BotW = 320.0f;
+constexpr float BotH = 240.0f;
+
+// Bottom screen layout.
+constexpr float TabY = 16.0f;
+constexpr float TabX0 = 20.0f;
+constexpr float TabStep = 24.0f;
+constexpr float RoundY = 16.0f;
+constexpr float RoundX0 = 255.0f;
+constexpr float RoundStep = 23.0f;
+constexpr float GridX = 18.0f;
+constexpr float GridY = 33.0f;
+constexpr float Tile = 64.0f;
+constexpr float TileStep = 71.0f;
+constexpr int GridCols = 4;
+constexpr int GridRows = 2;
+// The fixed details strip under the grid on the Home section.
+constexpr float StripX = 10.0f;
+constexpr float StripY = 178.0f;
+constexpr float StripW = 300.0f;
+constexpr float StripH = 56.0f;
+constexpr float RowH = 26.0f;
+constexpr float RowStep = 29.0f;
+constexpr float RowX = 10.0f;
+constexpr float RowW = 300.0f;
+
+enum class View { Section, Album, Artist, NowPlaying, Search, Settings, Visualizer, Pairing };
+enum class Section { Home, Songs, Artists, UpNext, Downloads };
+
+struct MenuItem {
+    std::string label;
+    Icon icon;
+    bool enabled;
+    std::function<void()> action;
+};
+
+struct Row {
+    std::string title;
+    std::string sub;
+    std::string right;
+    int album = -1;      // for the thumbnail
+    int track = -1;      // preferred over album for the thumbnail
+    bool playing = false;
+    bool dim = false;
+};
+
+u32 keysDownRepeat()
+{
+    static int held = 0;
+    static u32 last = 0;
+    const u32 down = hidKeysDown();
+    const u32 heldKeys = hidKeysHeld() & (KEY_DUP | KEY_DDOWN | KEY_DLEFT | KEY_DRIGHT | KEY_CPAD_UP | KEY_CPAD_DOWN | KEY_CPAD_LEFT | KEY_CPAD_RIGHT);
+    if (heldKeys == 0 || heldKeys != last) {
+        held = 0;
+        last = heldKeys;
+        return down;
+    }
+    ++held;
+    if (held > 18 && (held - 18) % 5 == 0) return down | heldKeys;
+    return down;
+}
+
+bool up(u32 k) { return k & (KEY_DUP | KEY_CPAD_UP); }
+bool down(u32 k) { return k & (KEY_DDOWN | KEY_CPAD_DOWN); }
+bool left(u32 k) { return k & (KEY_DLEFT | KEY_CPAD_LEFT); }
+bool right(u32 k) { return k & (KEY_DRIGHT | KEY_CPAD_RIGHT); }
+
+std::string plural(int n, const char *one, const char *many)
+{
+    return std::to_string(n) + " " + (n == 1 ? one : many);
+}
+
+std::string minutesText(int seconds)
+{
+    const int minutes = (seconds + 30) / 60;
+    if (minutes >= 60) return std::to_string(minutes / 60) + " h " + std::to_string(minutes % 60) + " min";
+    return std::to_string(minutes) + " min";
+}
+
+std::string gigabytes(int64_t bytes)
+{
+    char buffer[32];
+    std::snprintf(buffer, sizeof(buffer), "%.1f GB", double(bytes) / (1024.0 * 1024.0 * 1024.0));
+    return buffer;
+}
+
+} // namespace
+
+struct App::State {
+    platform::Settings settings;
+    core::Library library;
+    core::PlayQueue queue;
+    audio::Player player;
+    bool audioReady = false;
+    std::string audioError;
+
+    View view = View::Section;
+    View previous = View::Section;
+    Section section = Section::Home;
+    int focusHome = 0;
+    int focusSongs = 0;
+    int focusArtists = 0;
+    int focusUpNext = 0;
+    int focusAlbum = 0;
+    int focusArtist = 0;
+    int focusSearch = 0;
+    int focusSettings = 2;
+    int focusNow = 2; // transport index
+    int focusNowQueue = -1; // selected row in the Now Playing up-next list, -1 none
+    int focusViz = 0;
+    int scrollRows = 0;
+    int listScroll = 0;
+    // Pixel positions of the two scrollers; the integers above are derived
+    // from these so keyboard focus logic keeps working after a drag.
+    float gridPx = 0.0f;
+    float listPx = 0.0f;
+
+    int albumView = -1;
+    std::string artistView;
+    std::vector<int> artistAlbums;
+    std::string searchQuery;
+    std::vector<int> searchResults;
+    int nowTrack = -1;
+    bool scanning = true;
+    bool emptyDialogShown = false;
+    uint32_t frame = 0;
+    int visualizerDim = 0;
+
+    // Touch drag scrolling. A press records where the list was; moving more
+    // than a few pixels turns the press into a drag, and letting go with
+    // speed flicks the list on until it settles on a row boundary.
+    struct Drag {
+        bool held = false;
+        bool moved = false;
+        float startY = 0.0f;
+        float startPx = 0.0f;
+        float px = 0.0f;
+        float lastY = 0.0f;
+        float velocity = 0.0f;
+        bool coasting = false;
+        touchPosition pressAt{};
+    } drag;
+
+    struct ScrollInfo {
+        int *index = nullptr; // the row-index scroll the keyboard uses
+        float step = 0.0f;
+        int maxIndex = 0;
+    };
+    float &pxFor(const ScrollInfo &info) { return info.index == &scrollRows ? gridPx : listPx; }
+
+    ScrollInfo currentScroll()
+    {
+        ScrollInfo info;
+        if (menuOpen || dialogOpen) return info;
+        switch (view) {
+        case View::Section:
+            if (section == Section::Home) {
+                const int rows = (int(library.albums().size()) + GridCols - 1) / GridCols;
+                info = {&scrollRows, TileStep, std::max(0, rows - GridRows)};
+            } else if (section == Section::Songs) {
+                info = {&listScroll, RowStep, std::max(0, int(allTracks().size()) - 7)};
+            } else if (section == Section::Artists) {
+                info = {&listScroll, RowStep, std::max(0, int(library.artists().size()) - 7)};
+            } else if (section == Section::UpNext) {
+                info = {&listScroll, RowStep, std::max(0, int(queue.upcoming().size()) - 7)};
+            }
+            break;
+        case View::Album:
+            if (albumView >= 0) info = {&listScroll, RowStep, std::max(0, int(library.albums()[albumView].tracks.size()) - 6)};
+            break;
+        case View::Artist:
+            info = {&listScroll, RowStep, std::max(0, int(artistAlbums.size()) - 6)};
+            break;
+        case View::Search:
+            info = {&listScroll, RowStep, std::max(0, int(searchResults.size()) - 6)};
+            break;
+        default:
+            break;
+        }
+        return info;
+    }
+
+    // Pixel offset of the current list, fractional while dragging.
+    float scrollPx()
+    {
+        const ScrollInfo info = currentScroll();
+        if (info.index == nullptr) return 0.0f;
+        float &px = pxFor(info);
+        const float maxPx = info.maxIndex * info.step;
+        if (px > maxPx) px = maxPx;
+        if (px < 0.0f) px = 0.0f;
+        return px;
+    }
+
+    // Returns true when a tap should be delivered this frame.
+    bool updateDrag(bool &tapped, touchPosition &touch)
+    {
+        const u32 held = hidKeysHeld();
+        const u32 up = hidKeysUp();
+        touchPosition now{};
+        hidTouchRead(&now);
+        const ScrollInfo info = currentScroll();
+        tapped = false;
+        if ((hidKeysDown() & KEY_TOUCH) != 0) {
+            drag.held = true;
+            drag.moved = false;
+            drag.pressAt = now;
+            drag.startY = now.py;
+            drag.lastY = now.py;
+            drag.velocity = 0.0f;
+            drag.startPx = info.index != nullptr ? scrollPx() : 0.0f;
+            drag.px = drag.startPx;
+            drag.coasting = false;
+        } else if (drag.held && (held & KEY_TOUCH) != 0) {
+            if (info.index != nullptr) {
+                const float dy = drag.startY - float(now.py);
+                if (!drag.moved && std::fabs(dy) > 6.0f) drag.moved = true;
+                if (drag.moved) {
+                    const float maxPx = info.maxIndex * info.step;
+                    drag.px = std::min(maxPx, std::max(0.0f, drag.startPx + dy));
+                    drag.velocity = float(drag.lastY) - float(now.py);
+                    pxFor(info) = drag.px;
+                }
+            }
+            drag.lastY = now.py;
+        } else if (drag.held && (up & KEY_TOUCH) != 0) {
+            drag.held = false;
+            if (!drag.moved) {
+                tapped = true;
+                touch = drag.pressAt;
+            } else if (info.index != nullptr) {
+                drag.coasting = true;
+            }
+        }
+        if (drag.coasting && !drag.held) {
+            if (info.index == nullptr) {
+                drag.coasting = false;
+            } else {
+                const float maxPx = info.maxIndex * info.step;
+                drag.px = std::min(maxPx, std::max(0.0f, drag.px + drag.velocity));
+                pxFor(info) = drag.px;
+                drag.velocity *= 0.88f;
+                if (std::fabs(drag.velocity) < 0.2f || drag.px <= 0.0f || drag.px >= maxPx) {
+                    // Stop where the flick ran out; no snapping to a row.
+                    drag.coasting = false;
+                    drag.moved = false;
+                    drag.velocity = 0.0f;
+                }
+            }
+        }
+        if (info.index != nullptr) {
+            // The integer scroll follows the pixels so key focus stays sane.
+            *info.index = std::max(0, std::min(info.maxIndex, int(pxFor(info) / info.step)));
+        }
+        return tapped;
+    }
+
+    // Overlays.
+    bool menuOpen = false;
+    std::vector<MenuItem> menu;
+    int menuFocus = 0;
+    bool dialogOpen = false;
+    std::string dialogTitle;
+    std::string dialogBody;
+    std::string dialogPrimary;
+    std::string dialogSecondary;
+    std::function<void(bool)> dialogClose;
+    std::string toastText;
+    int toastFrames = 0;
+
+    std::map<std::string, art::Image> art;
+    bool artLoadedThisFrame = false;
+    float bands[20] = {};
+
+    // Console status, refreshed once a second: each of these is a service
+    // call and the top screen used to make all of them every frame.
+    struct Status {
+        std::string clock;
+        int battery = 5;
+        bool charging = false;
+        int wifi = 0;
+        bool headphones = false;
+    } status;
+    void refreshStatus()
+    {
+        status.clock = platform::clockText() + "  |  " + platform::dateText();
+        status.battery = platform::batteryLevel();
+        status.charging = platform::charging();
+        status.wifi = platform::wifiStrength();
+        status.headphones = audioReady && platform::headphonesPlugged();
+    }
+    // The showcase title's fitted size, remembered per title.
+    std::string fitTitle;
+    float fitResult = 30.0f;
+    float fittedShowcaseSize(const std::string &title)
+    {
+        if (title != fitTitle) {
+            fitTitle = title;
+            fitResult = ui::fitSize(title, 30.0f, 24.0f, textMaxW());
+        }
+        return fitResult;
+    }
+    std::vector<int> allTracksCache;
+    bool allTracksDirty = true;
+
+    // Scanning runs on its own thread with its own Library; the main thread
+    // swaps it in when it finishes.
+    core::Library *scanLibrary = nullptr;
+    Thread scanThread = nullptr;
+    volatile bool scanDone = false;
+    static void scanEntry(void *arg)
+    {
+        State *self = static_cast<State *>(arg);
+        while (self->scanLibrary->step(platform::readTagsFromFile, 1)) {
+        }
+        self->scanLibrary->build();
+        self->scanDone = true;
+    }
+
+    // A scripted input walk for crash testing in the emulator: when
+    // sdmc:/3ds/3dsFM/smoke.txt exists, its space-separated key names are
+    // pressed one every 20 frames and the view is logged after each.
+    std::vector<u32> smoke;
+    size_t smokeIndex = 0;
+    bool smokeLoaded = false;
+
+    u32 smokeKey()
+    {
+        if (!smokeLoaded) {
+            smokeLoaded = true;
+            std::vector<uint8_t> bytes;
+            if (platform::readWholeFile("sdmc:/3ds/3dsFM/smoke.txt", bytes, 65536)) {
+                std::string token;
+                auto flush = [&] {
+                    static const struct { const char *name; u32 key; } names[] = {
+                        {"A", KEY_A}, {"B", KEY_B}, {"X", KEY_X}, {"Y", KEY_Y}, {"L", KEY_L}, {"R", KEY_R},
+                        {"UP", KEY_DUP}, {"DOWN", KEY_DDOWN}, {"LEFT", KEY_DLEFT}, {"RIGHT", KEY_DRIGHT},
+                        {"START", KEY_START}, {"SELECT", KEY_SELECT}, {"WAIT", 0}};
+                    for (const auto &n : names) if (token == n.name) smoke.push_back(n.key);
+                    token.clear();
+                };
+                for (uint8_t c : bytes) {
+                    if (c == ' ' || c == '\n' || c == '\r' || c == '\t') flush(); else token += char(c);
+                }
+                flush();
+                platform::log("smoke: %d steps", int(smoke.size()));
+            }
+        }
+        if (smokeIndex >= smoke.size() || scanning) return 0;
+        if (frame % 20 != 0) return 0;
+        const u32 key = smoke[smokeIndex++];
+        platform::log("smoke %d: key 0x%lx view=%d section=%d focusHome=%d menu=%d dialog=%d now=%d playing=%d", int(smokeIndex), (unsigned long)key, int(view), int(section), focusHome, menuOpen ? 1 : 0, dialogOpen ? 1 : 0, nowTrack, player.playing() ? 1 : 0);
+        return key;
+    }
+
+    // ---- helpers ----
+    void toast(const std::string &text)
+    {
+        toastText = text;
+        toastFrames = 150;
+    }
+
+    void dialog(const std::string &title, const std::string &body, const std::string &primary, const std::string &secondary, std::function<void(bool)> onClose)
+    {
+        dialogOpen = true;
+        dialogTitle = title;
+        dialogBody = body;
+        dialogPrimary = primary;
+        dialogSecondary = secondary;
+        dialogClose = std::move(onClose);
+    }
+
+    void closeDialog(bool primary)
+    {
+        dialogOpen = false;
+        if (dialogClose) dialogClose(primary);
+    }
+
+    void go(View v)
+    {
+        if (v != view) {
+            previous = view;
+            view = v;
+        }
+    }
+
+    void back()
+    {
+        switch (view) {
+        case View::Album:
+            view = artistView.empty() ? View::Section : View::Artist;
+            if (view == View::Section && section == Section::Artists) view = View::Artist;
+            if (artistView.empty()) view = View::Section;
+            break;
+        case View::Artist:
+            artistView.clear();
+            view = View::Section;
+            section = Section::Artists;
+            break;
+        case View::NowPlaying:
+        case View::Search:
+        case View::Settings:
+        case View::Pairing:
+            view = previous == view ? View::Section : previous;
+            if (view == View::Visualizer) view = View::NowPlaying;
+            break;
+        case View::Visualizer:
+            view = View::NowPlaying;
+            break;
+        default:
+            break;
+        }
+    }
+
+    // ---- library and scanning ----
+    void finishScanThread()
+    {
+        if (scanThread != nullptr) {
+            threadJoin(scanThread, U64_MAX);
+            threadFree(scanThread);
+            scanThread = nullptr;
+        }
+        delete scanLibrary;
+        scanLibrary = nullptr;
+    }
+
+    void startScan()
+    {
+        finishScanThread();
+        library.clear();
+        allTracksDirty = true;
+        for (auto &entry : art) art::release(entry.second);
+        art.clear();
+        emptyDialogShown = false;
+        scanLibrary = new core::Library;
+        scanLibrary->collect(settings.musicFolder, platform::listDirectory);
+        platform::log("scan: %d files under %s", scanLibrary->collectedCount(), settings.musicFolder.c_str());
+        scanDone = false;
+        scanning = true;
+        s32 prio = 0;
+        svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
+        scanThread = threadCreate(scanEntry, this, 64 * 1024, prio + 1, -2, false);
+        if (scanThread == nullptr) {
+            // No thread: scan inline (slow start, but it still works).
+            scanEntry(this);
+        }
+    }
+
+    int scanCollected() const { return scanLibrary != nullptr ? scanLibrary->collectedCount() : 0; }
+    int scanScanned() const { return scanLibrary != nullptr ? scanLibrary->scannedCount() : 0; }
+
+    void stepScan()
+    {
+        if (!scanning) return;
+        if (!scanDone) return;
+        library = std::move(*scanLibrary);
+        finishScanThread();
+        scanning = false;
+        allTracksDirty = true;
+        platform::log("scan done: %d tracks, %d albums", int(library.tracks().size()), int(library.albums().size()));
+        if (library.tracks().empty() && !emptyDialogShown) {
+            emptyDialogShown = true;
+            dialog("No music found", "Put folders of MP3, Ogg, Opus or WAV files under " + settings.musicFolder + " on the SD card, then rescan.", "Rescan", "OK", [this](bool primary) {
+                if (primary) startScan();
+            });
+        }
+    }
+
+    bool debugNoArt = platform::fileExists("sdmc:/3ds/3dsFM/debug-noart");
+
+    const art::Image *albumArt(int albumIndex)
+    {
+        if (debugNoArt) return nullptr;
+        if (albumIndex < 0 || albumIndex >= int(library.albums().size())) return nullptr;
+        const core::Album &album = library.albums()[albumIndex];
+        if (album.artPath.empty()) return nullptr;
+        auto it = art.find(album.key);
+        if (it != art.end()) {
+            it->second.lastUsedFrame = frame;
+            return it->second.ready ? &it->second : nullptr;
+        }
+        if (art.size() >= 32) {
+            auto oldest = art.begin();
+            for (auto i = art.begin(); i != art.end(); ++i) {
+                if (i->second.lastUsedFrame < oldest->second.lastUsedFrame) oldest = i;
+            }
+            art::release(oldest->second);
+            art.erase(oldest);
+        }
+        // Placeholder entry until the loader thread delivers the pixels.
+        art::Image &image = art[album.key];
+        image.lastUsedFrame = frame;
+        art::request(album.key, album.artPath, album.artIsEmbedded);
+        return nullptr;
+    }
+
+    // Art for a specific track: its own embedded picture when it has one
+    // (compilations have a different cover per song), else the album's.
+    const art::Image *trackArt(int trackIndex)
+    {
+        if (debugNoArt) return nullptr;
+        if (trackIndex < 0 || trackIndex >= int(library.tracks().size())) return nullptr;
+        const core::Track &t = library.tracks()[trackIndex];
+        if (!t.hasEmbeddedArt) return albumArt(albumIndexOfTrack(trackIndex));
+        const std::string key = "track:" + t.path;
+        auto it = art.find(key);
+        if (it != art.end()) {
+            it->second.lastUsedFrame = frame;
+            return it->second.ready ? &it->second : nullptr;
+        }
+        if (art.size() >= 32) {
+            auto oldest = art.begin();
+            for (auto i = art.begin(); i != art.end(); ++i) {
+                if (i->second.lastUsedFrame < oldest->second.lastUsedFrame) oldest = i;
+            }
+            art::release(oldest->second);
+            art.erase(oldest);
+        }
+        art::Image &image = art[key];
+        image.lastUsedFrame = frame;
+        art::request(key, t.path, true);
+        return nullptr;
+    }
+
+    // One finished decode becomes a texture per frame.
+    void pollArt()
+    {
+        std::string key;
+        art::Image image;
+        if (!art::takeFinished(key, image)) return;
+        auto it = art.find(key);
+        if (it == art.end()) {
+            art::release(image);
+            return;
+        }
+        const uint32_t used = it->second.lastUsedFrame;
+        it->second = image;
+        it->second.lastUsedFrame = used;
+        if (image.failed) platform::log("art failed: %s", key.c_str());
+    }
+
+    int albumIndexOfTrack(int trackIndex) const
+    {
+        if (trackIndex < 0 || trackIndex >= int(library.tracks().size())) return -1;
+        return library.albumIndex(library.tracks()[trackIndex].albumKey);
+    }
+
+    // ---- playback ----
+    core::Item itemFor(int trackIndex) const
+    {
+        const core::Track &t = library.tracks()[trackIndex];
+        core::Item item;
+        item.libraryIndex = trackIndex;
+        item.id = t.path;
+        item.title = t.title;
+        item.artist = t.artist;
+        item.album = t.album;
+        item.durationSeconds = t.durationSeconds;
+        return item;
+    }
+
+    void applyQueueModes()
+    {
+        queue.setRepeat(settings.repeat == 1 ? core::Repeat::All : settings.repeat == 2 ? core::Repeat::One : core::Repeat::Off);
+        queue.setShuffle(settings.shuffle, uint32_t(svcGetSystemTick() & 0xFFFFFFFF));
+    }
+
+    void playList(const std::vector<int> &trackIndices, int start, bool shuffleAll = false)
+    {
+        if (trackIndices.empty()) return;
+        queue.clear();
+        for (int i : trackIndices) queue.add(itemFor(i));
+        if (shuffleAll) {
+            settings.shuffle = true;
+            settings.save();
+            queue.jumpTo(size_t(start < 0 ? 0 : start));
+            applyQueueModes();
+            // Start on a random track rather than the first.
+            queue.setShuffle(true, uint32_t(svcGetSystemTick() & 0xFFFFFFFF));
+            queue.next(true);
+        } else {
+            queue.jumpTo(size_t(start < 0 ? 0 : start));
+            applyQueueModes();
+        }
+        startCurrent();
+        go(View::NowPlaying);
+    }
+
+    void startCurrent()
+    {
+        const core::Item *item = queue.current();
+        if (item == nullptr) {
+            player.stop();
+            nowTrack = -1;
+            return;
+        }
+        if (!audioReady) {
+            nowTrack = item->libraryIndex;
+            toast(audioError);
+            return;
+        }
+        const core::Track &t = library.tracks()[item->libraryIndex];
+        std::string error;
+        if (!player.play(t.path, t.format, error)) {
+            platform::log("play failed: %s (%s)", t.path.c_str(), error.c_str());
+            toast(error);
+            nowTrack = item->libraryIndex;
+            return;
+        }
+        nowTrack = item->libraryIndex;
+        focusNowQueue = -1;
+        platform::log("playing: %s", t.path.c_str());
+    }
+
+    void skipNext(bool user)
+    {
+        if (queue.next(user)) startCurrent();
+        else player.stop();
+    }
+
+    void skipPrevious()
+    {
+        if (player.positionSeconds() > 3.0) {
+            player.seek(0.0);
+            return;
+        }
+        if (queue.previous()) startCurrent();
+        else player.seek(0.0);
+    }
+
+    void togglePlay()
+    {
+        if (player.loaded()) {
+            player.toggle();
+        } else if (queue.current() != nullptr) {
+            startCurrent();
+        } else if (!library.tracks().empty()) {
+            std::vector<int> all;
+            for (int i = 0; i < int(library.tracks().size()); ++i) all.push_back(i);
+            playList(all, 0);
+        }
+    }
+
+    const std::vector<int> &allTracks()
+    {
+        if (allTracksDirty) {
+            allTracksCache.clear();
+            for (const core::Album &a : library.albums()) {
+                for (int t : a.tracks) allTracksCache.push_back(t);
+            }
+            allTracksDirty = false;
+        }
+        return allTracksCache;
+    }
+
+    void addToUpNext(const std::vector<int> &trackIndices)
+    {
+        for (int i : trackIndices) queue.add(itemFor(i));
+        toast(plural(int(trackIndices.size()), "song added to up next", "songs added to up next"));
+        if (!player.loaded() && queue.current() != nullptr) startCurrent();
+    }
+
+    void disabled(const char *what)
+    {
+        toast(std::string(what) + " needs a paired server");
+    }
+
+    // ---- menus ----
+    void openTrackMenu(int trackIndex)
+    {
+        menu.clear();
+        const int album = albumIndexOfTrack(trackIndex);
+        menu.push_back({"Play now", Icon::Play, true, [this, trackIndex] { playList({trackIndex}, 0); }});
+        menu.push_back({"Add to up next", Icon::Queue, true, [this, trackIndex] { addToUpNext({trackIndex}); }});
+        if (album >= 0) {
+            menu.push_back({"Play the album from here", Icon::Album, true, [this, album, trackIndex] {
+                const core::Album &a = library.albums()[album];
+                int start = 0;
+                for (int i = 0; i < int(a.tracks.size()); ++i) if (a.tracks[i] == trackIndex) start = i;
+                playList(a.tracks, start);
+            }});
+            menu.push_back({"Go to album", Icon::ChevronRight, true, [this, album] { openAlbum(album); }});
+        }
+        menu.push_back({"Save to SD card", Icon::Download, false, [this] { disabled("Saving"); }});
+        menu.push_back({"Like", Icon::Heart, false, [this] { disabled("Liking"); }});
+        menuFocus = 0;
+        menuOpen = true;
+    }
+
+    void openAlbumMenu(int albumIndex)
+    {
+        menu.clear();
+        const core::Album &a = library.albums()[albumIndex];
+        const std::vector<int> tracks = a.tracks;
+        const std::string artist = a.artist;
+        menu.push_back({"Play album", Icon::Play, true, [this, tracks] { playList(tracks, 0); }});
+        menu.push_back({"Shuffle album", Icon::Shuffle, true, [this, tracks] { playList(tracks, 0, true); }});
+        menu.push_back({"Add to up next", Icon::Queue, true, [this, tracks] { addToUpNext(tracks); }});
+        menu.push_back({"Go to artist", Icon::Person, true, [this, artist] { openArtist(artist); }});
+        menu.push_back({"Save album", Icon::Download, false, [this] { disabled("Saving"); }});
+        menuFocus = 0;
+        menuOpen = true;
+    }
+
+    void openAlbum(int albumIndex)
+    {
+        albumView = albumIndex;
+        focusAlbum = 0;
+        listScroll = 0; listPx = 0.0f;
+        go(View::Album);
+    }
+
+    void openArtist(const std::string &artist)
+    {
+        artistView = artist;
+        artistAlbums = library.albumsByArtist(artist);
+        focusArtist = 0;
+        listScroll = 0; listPx = 0.0f;
+        go(View::Artist);
+    }
+
+    // ---- which album the top screen shows ----
+    int showcaseAlbum()
+    {
+        switch (view) {
+        case View::Section:
+            switch (section) {
+            case Section::Home: return focusHome < int(library.albums().size()) ? focusHome : -1;
+            case Section::Songs: {
+                const std::vector<int> &all = allTracks();
+                return focusSongs < int(all.size()) ? albumIndexOfTrack(all[focusSongs]) : -1;
+            }
+            case Section::Artists: {
+                const std::vector<std::string> artists = library.artists();
+                if (focusArtists >= int(artists.size())) return -1;
+                const std::vector<int> albums = library.albumsByArtist(artists[focusArtists]);
+                return albums.empty() ? -1 : albums[0];
+            }
+            case Section::UpNext: {
+                const std::vector<const core::Item *> upcoming = queue.upcoming();
+                return focusUpNext < int(upcoming.size()) ? albumIndexOfTrack(upcoming[focusUpNext]->libraryIndex) : albumIndexOfTrack(nowTrack);
+            }
+            case Section::Downloads: return -1;
+            }
+            return -1;
+        case View::Album: return albumView;
+        case View::Artist: return focusArtist < int(artistAlbums.size()) ? artistAlbums[focusArtist] : -1;
+        case View::NowPlaying:
+        case View::Visualizer: return albumIndexOfTrack(nowTrack);
+        case View::Search: return focusSearch < int(searchResults.size()) ? albumIndexOfTrack(searchResults[focusSearch]) : -1;
+        default: return -1;
+        }
+    }
+
+    // ---- rows for list views ----
+    std::vector<Row> rowsFor(Section sec)
+    {
+        std::vector<Row> rows;
+        if (sec == Section::Songs) {
+            for (int t : allTracks()) {
+                const core::Track &track = library.tracks()[t];
+                Row r;
+                r.title = track.title;
+                r.sub = track.artist;
+                r.right = track.durationSeconds > 0 ? core::formatClock(track.durationSeconds) : "";
+                r.album = albumIndexOfTrack(t);
+                r.track = t;
+                r.playing = t == nowTrack;
+                rows.push_back(r);
+            }
+        } else if (sec == Section::Artists) {
+            for (const std::string &artist : library.artists()) {
+                const std::vector<int> albums = library.albumsByArtist(artist);
+                int songs = 0;
+                for (int a : albums) songs += int(library.albums()[a].tracks.size());
+                Row r;
+                r.title = artist;
+                r.sub = plural(int(albums.size()), "album", "albums") + " · " + plural(songs, "song", "songs");
+                r.album = albums.empty() ? -1 : albums[0];
+                rows.push_back(r);
+            }
+        } else if (sec == Section::UpNext) {
+            int n = 1;
+            for (const core::Item *item : queue.upcoming()) {
+                Row r;
+                r.title = item->title;
+                r.sub = item->artist;
+                r.right = item->durationSeconds > 0 ? core::formatClock(item->durationSeconds) : "";
+                r.album = albumIndexOfTrack(item->libraryIndex);
+                r.track = item->libraryIndex;
+                r.playing = n == 1 && item->libraryIndex == nowTrack;
+                rows.push_back(r);
+                ++n;
+            }
+        }
+        return rows;
+    }
+
+    std::vector<Row> albumRows(int albumIndex)
+    {
+        std::vector<Row> rows;
+        if (albumIndex < 0) return rows;
+        const core::Album &a = library.albums()[albumIndex];
+        for (int t : a.tracks) {
+            const core::Track &track = library.tracks()[t];
+            Row r;
+            r.title = track.title;
+            r.right = track.durationSeconds > 0 ? core::formatClock(track.durationSeconds) : "";
+            r.sub = track.trackNumber > 0 ? std::to_string(track.trackNumber) : "";
+            r.playing = t == nowTrack;
+            rows.push_back(r);
+        }
+        return rows;
+    }
+
+    std::vector<Row> artistRows()
+    {
+        std::vector<Row> rows;
+        for (int a : artistAlbums) {
+            const core::Album &album = library.albums()[a];
+            Row r;
+            r.title = album.title;
+            r.sub = (album.year.empty() ? "" : album.year + " · ") + plural(int(album.tracks.size()), "song", "songs");
+            r.right = minutesText(album.durationSeconds);
+            r.album = a;
+            rows.push_back(r);
+        }
+        return rows;
+    }
+
+    std::vector<Row> searchRows()
+    {
+        std::vector<Row> rows;
+        for (int t : searchResults) {
+            const core::Track &track = library.tracks()[t];
+            Row r;
+            r.title = track.title;
+            r.sub = track.artist + " · " + track.album;
+            r.right = track.durationSeconds > 0 ? core::formatClock(track.durationSeconds) : "";
+            r.album = albumIndexOfTrack(t);
+            r.track = t;
+            r.playing = t == nowTrack;
+            rows.push_back(r);
+        }
+        return rows;
+    }
+
+    // ---- settings rows ----
+    struct SettingRow {
+        std::string label;
+        std::string value;
+        bool header;
+        bool enabled;
+        int toggle; // -1 none, 0 off, 1 on
+        std::string help;
+    };
+
+    std::vector<SettingRow> settingRows()
+    {
+        std::vector<SettingRow> rows;
+        const int songs = int(library.tracks().size());
+        rows.push_back({"Server", "", true, false, -1, ""});
+        rows.push_back({"Paired server", "Not paired", false, true, -1, "Streaming from your own 3dsFM server is coming in a later build. For now, everything plays from the SD card."});
+        rows.push_back({"Stream quality", "Needs a server", false, false, -1, "Stream quality applies to music coming from a paired server. Saved and local files play at their own quality."});
+        rows.push_back({"Playback", "", true, false, -1, ""});
+        rows.push_back({"Keep playing with the lid closed", "", false, true, settings.keepPlayingLidClosed ? 1 : 0, "With this on, closing the lid turns the screens off and keeps the music going, like the console's own sound app. Open the lid and the screens come back."});
+        rows.push_back({"Prefer saved copies", "", false, false, -1, "When a song is both saved and streamable, play the saved copy. This matters once a server is paired."});
+        rows.push_back({"Look", "", true, false, -1, ""});
+        rows.push_back({"Dark mode", "", false, true, settings.darkMode ? 1 : 0, "Dark screens with light text. Off gives the white HOME Menu look. Either way the selection blue stays the same."});
+        rows.push_back({"Album art on the top screen", "", false, true, settings.artOnTopScreen ? 1 : 0, "Shows the focused album's art fogged into the top screen. Turn it off for a plain top screen that uses less battery on an Old 3DS."});
+        rows.push_back({"Library", "", true, false, -1, ""});
+        rows.push_back({"Music folder", settings.musicFolder, false, true, -1, "The folder 3dsFM scans for music. Albums are folders of songs; tags are read from MP3, Ogg, Opus and WAV files when they have them."});
+        rows.push_back({"Rescan the Music folder", "", false, true, -1, "Reads the folder again. Do this after copying new music to the SD card."});
+        rows.push_back({"Storage", plural(songs, "song", "songs") + " · " + gigabytes(platform::sdFreeBytes()) + " free", false, false, -1, "What is on the SD card. Saving streamed songs will use this space once a server is paired."});
+        return rows;
+    }
+
+    void activateSetting(int index)
+    {
+        std::vector<SettingRow> rows = settingRows();
+        if (index < 0 || index >= int(rows.size())) return;
+        const std::string &label = rows[index].label;
+        if (label == "Paired server") {
+            go(View::Pairing);
+        } else if (label == "Keep playing with the lid closed") {
+            settings.keepPlayingLidClosed = !settings.keepPlayingLidClosed;
+            settings.save();
+        } else if (label == "Dark mode") {
+            settings.darkMode = !settings.darkMode;
+            settings.save();
+            ui::setTheme(settings.darkMode);
+        } else if (label == "Album art on the top screen") {
+            settings.artOnTopScreen = !settings.artOnTopScreen;
+            settings.save();
+        } else if (label == "Music folder") {
+            std::string folder;
+            if (platform::keyboard("Folder on the SD card", settings.musicFolder, folder) && !folder.empty()) {
+                if (folder.rfind("sdmc:/", 0) != 0) folder = "sdmc:/" + folder;
+                while (folder.size() > 6 && folder.back() == '/') folder.pop_back();
+                settings.musicFolder = folder;
+                settings.save();
+                player.stop();
+                queue.clear();
+                nowTrack = -1;
+                startScan();
+            }
+        } else if (label == "Rescan the Music folder") {
+            player.stop();
+            queue.clear();
+            nowTrack = -1;
+            startScan();
+            toast("Scanning " + settings.musicFolder);
+        } else if (!rows[index].enabled) {
+            disabled("This");
+        }
+    }
+
+    // ---- input ----
+    void update()
+    {
+        ++frame;
+        artLoadedThisFrame = false;
+        stepScan();
+        pollArt();
+        if (frame % 60 == 1) refreshStatus();
+        if (player.finished()) skipNext(false);
+        if (toastFrames > 0) --toastFrames;
+
+        hidScanInput();
+        const u32 injected = smokeKey();
+        const u32 k = keysDownRepeat() | injected;
+        const u32 kd = hidKeysDown() | injected;
+        touchPosition touch{};
+        bool tapped = false;
+        updateDrag(tapped, touch);
+        // A key press cancels a flick.
+        if ((k & ~u32(KEY_TOUCH)) != 0 && (drag.coasting || drag.moved) && !drag.held) {
+            drag.coasting = false;
+            drag.moved = false;
+        }
+
+        if (dialogOpen) {
+            if (kd & KEY_A) closeDialog(true);
+            else if (kd & KEY_B) closeDialog(false);
+            else if (tapped) {
+                if (ui::hit(170.0f, 150.0f, 70.0f, 20.0f, touch.px, touch.py)) closeDialog(false);
+                else if (ui::hit(246.0f, 150.0f, 64.0f, 20.0f, touch.px, touch.py)) closeDialog(true);
+            }
+            return;
+        }
+        if (menuOpen) {
+            updateMenu(k, kd, tapped, touch);
+            return;
+        }
+
+        // Global keys.
+        if (kd & KEY_START) {
+            togglePlay();
+        }
+        if ((kd & KEY_L) && queue.current() != nullptr) skipPrevious();
+        if ((kd & KEY_R) && queue.current() != nullptr) skipNext(true);
+        if (kd & KEY_SELECT) {
+            if (view == View::Visualizer) back(); else go(View::Visualizer);
+        }
+
+        switch (view) {
+        case View::Section: updateSection(k, kd, tapped, touch); break;
+        case View::Album: updateAlbum(k, kd, tapped, touch); break;
+        case View::Artist: updateArtist(k, kd, tapped, touch); break;
+        case View::NowPlaying: updateNowPlaying(k, kd, tapped, touch); break;
+        case View::Search: updateSearch(k, kd, tapped, touch); break;
+        case View::Settings: updateSettings(k, kd, tapped, touch); break;
+        case View::Visualizer: updateVisualizer(k, kd, tapped, touch); break;
+        case View::Pairing: updatePairing(kd, tapped, touch); break;
+        }
+    }
+
+    // The top row of the bottom screen, shared by section views and most others.
+    bool chromeTap(const touchPosition &touch, bool withTabs)
+    {
+        if (withTabs) {
+            for (int i = 0; i < 5; ++i) {
+                if (ui::hit(TabX0 + i * TabStep - 11.0f, TabY - 11.0f, 22.0f, 22.0f, touch.px, touch.py)) {
+                    section = Section(i);
+                    listScroll = 0; listPx = 0.0f;
+                    if (view != View::Section) go(View::Section);
+                    return true;
+                }
+            }
+        }
+        for (int i = 0; i < 3; ++i) {
+            if (ui::hit(RoundX0 + i * RoundStep - 11.0f, RoundY - 11.0f, 22.0f, 22.0f, touch.px, touch.py)) {
+                if (i == 0) { go(View::Search); }
+                else if (i == 1) { go(View::NowPlaying); }
+                else { go(View::Settings); }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void moveListFocus(int &focus, int count, int visible, u32 k)
+    {
+        if (count <= 0) { focus = 0; listScroll = 0; listPx = 0.0f; return; }
+        if (focus >= count) focus = count - 1;
+        const bool navigated = up(k) || down(k);
+        if (!navigated) return;
+        // After a drag the cursor may be off screen: bring the cursor to the
+        // list rather than the list to the cursor.
+        if (focus < listScroll || focus >= listScroll + visible) {
+            focus = std::max(listScroll, std::min(listScroll + visible - 1, focus));
+            focus = std::min(focus, count - 1);
+        }
+        if (up(k)) focus = (focus + count - 1) % count;
+        if (down(k)) focus = (focus + 1) % count;
+        if (focus < listScroll) { listScroll = focus; listPx = listScroll * RowStep; }
+        if (focus >= listScroll + visible) { listScroll = focus - visible + 1; listPx = listScroll * RowStep; }
+    }
+
+    int tappedRow(const touchPosition &touch, float y0, int visible, int count)
+    {
+        if (touch.py < y0 || touch.py >= y0 + visible * RowStep) return -1;
+        const float px = scrollPx();
+        const int index = int((touch.py - y0 + px) / RowStep);
+        const float rowTop = y0 + index * RowStep - px;
+        if (index < 0 || index >= count) return -1;
+        if (!ui::hit(RowX, rowTop, RowW, RowH, touch.px, touch.py)) return -1;
+        return index;
+    }
+
+    void updateSection(u32 k, u32 kd, bool tapped, const touchPosition &touch)
+    {
+        if (tapped && chromeTap(touch, true)) return;
+        if (kd & KEY_B) {
+            if (section != Section::Home) { section = Section::Home; listScroll = 0; listPx = 0.0f; }
+            return;
+        }
+        switch (section) {
+        case Section::Home: {
+            const int count = int(library.albums().size());
+            if (count == 0) break;
+            if (focusHome >= count) focusHome = count - 1;
+            const bool navigated = left(k) || right(k) || up(k) || down(k);
+            if (navigated) {
+                // Off-screen cursor after a drag: bring it to the visible rows first.
+                const int focusRow = focusHome / GridCols;
+                if (focusRow < scrollRows || focusRow >= scrollRows + GridRows) {
+                    const int targetRow = std::max(scrollRows, std::min(scrollRows + GridRows - 1, focusRow));
+                    focusHome = std::min(count - 1, targetRow * GridCols + focusHome % GridCols);
+                }
+                if (left(k) && focusHome > 0) --focusHome;
+                if (right(k) && focusHome + 1 < count) ++focusHome;
+                if (up(k)) focusHome = focusHome >= GridCols ? focusHome - GridCols : focusHome;
+                if (down(k)) {
+                    if (focusHome + GridCols < count) focusHome += GridCols;
+                    else if (focusHome / GridCols < (count - 1) / GridCols) focusHome = count - 1;
+                }
+                const int row = focusHome / GridCols;
+                if (row < scrollRows) { scrollRows = row; gridPx = scrollRows * TileStep; }
+                if (row >= scrollRows + GridRows) { scrollRows = row - GridRows + 1; gridPx = scrollRows * TileStep; }
+            }
+            if (kd & KEY_A) openAlbum(focusHome);
+            if (kd & KEY_Y) openAlbumMenu(focusHome);
+            if (kd & KEY_X) disabled("Saving");
+            if (tapped) {
+                if (ui::hit(StripX, StripY, StripW, StripH, touch.px, touch.py)) {
+                    const float cy = StripY + StripH / 2.0f;
+                    if (ui::hit(StripX + StripW - 24.0f - 11.0f, cy - 11.0f, 22.0f, 22.0f, touch.px, touch.py)) openAlbumMenu(focusHome);
+                    else if (ui::hit(StripX + StripW - 50.0f - 11.0f, cy - 11.0f, 22.0f, 22.0f, touch.px, touch.py)) playList(library.albums()[focusHome].tracks, 0);
+                    else openAlbum(focusHome);
+                    return;
+                }
+                const float px = scrollPx();
+                if (touch.py >= GridY && touch.py < GridY + GridRows * TileStep) {
+                    const int r = int((touch.py - GridY + px) / TileStep);
+                    for (int c = 0; c < GridCols; ++c) {
+                        const int index = r * GridCols + c;
+                        if (index >= count) continue;
+                        if (ui::hit(GridX + c * TileStep, GridY + r * TileStep - px, Tile, Tile, touch.px, touch.py)) {
+                            if (index == focusHome) openAlbum(index); else focusHome = index;
+                            return;
+                        }
+                    }
+                }
+            }
+            break;
+        }
+        case Section::Songs: {
+            const std::vector<int> &all = allTracks();
+            moveListFocus(focusSongs, int(all.size()), 7, k);
+            if (all.empty()) break;
+            if (kd & KEY_A) playList(all, focusSongs);
+            if (kd & KEY_Y) openTrackMenu(all[focusSongs]);
+            if (kd & KEY_X) disabled("Saving");
+            if (tapped) {
+                const int row = tappedRow(touch, GridY, 7, int(all.size()));
+                if (row >= 0) { if (row == focusSongs) playList(all, row); else focusSongs = row; }
+            }
+            break;
+        }
+        case Section::Artists: {
+            const std::vector<std::string> artists = library.artists();
+            moveListFocus(focusArtists, int(artists.size()), 7, k);
+            if (artists.empty()) break;
+            if (kd & KEY_A) openArtist(artists[focusArtists]);
+            if (tapped) {
+                const int row = tappedRow(touch, GridY, 7, int(artists.size()));
+                if (row >= 0) { if (row == focusArtists) openArtist(artists[row]); else focusArtists = row; }
+            }
+            break;
+        }
+        case Section::UpNext: {
+            const std::vector<const core::Item *> upcoming = queue.upcoming();
+            moveListFocus(focusUpNext, int(upcoming.size()), 7, k);
+            if (upcoming.empty()) break;
+            auto queueIndexOf = [&](int upcomingIndex) {
+                const core::Item *target = upcoming[upcomingIndex];
+                for (std::size_t i = 0; i < queue.size(); ++i) {
+                    if (queue.upcoming()[0] == target && upcomingIndex == 0) return int(queue.position());
+                }
+                // upcoming() lists tracks in play order; map back by pointer.
+                const std::vector<const core::Item *> all = queue.upcoming();
+                (void)all;
+                return -1;
+            };
+            (void)queueIndexOf;
+            if (kd & KEY_A) {
+                // Jump: advance until the focused entry is current.
+                for (int i = 0; i < focusUpNext; ++i) queue.next(true);
+                startCurrent();
+                focusUpNext = 0;
+            }
+            if (kd & KEY_X) {
+                if (focusUpNext == 0) {
+                    toast("Skip the playing song with R");
+                } else {
+                    // Find the queue index of the focused upcoming item.
+                    const core::Item *target = upcoming[focusUpNext];
+                    for (std::size_t i = 0; i < queue.size(); ++i) {
+                        // Items are stored contiguously; compare addresses.
+                        if (&queue.upcoming()[0][0] == target) break;
+                    }
+                    removeUpcoming(focusUpNext);
+                }
+            }
+            if (kd & KEY_Y && upcoming[focusUpNext]->libraryIndex >= 0) openTrackMenu(upcoming[focusUpNext]->libraryIndex);
+            if (tapped) {
+                const int row = tappedRow(touch, GridY, 7, int(upcoming.size()));
+                if (row >= 0) {
+                    if (row == focusUpNext) {
+                        for (int i = 0; i < row; ++i) queue.next(true);
+                        startCurrent();
+                        focusUpNext = 0;
+                    } else {
+                        focusUpNext = row;
+                    }
+                }
+            }
+            break;
+        }
+        case Section::Downloads:
+            if (kd & KEY_A) disabled("Saving");
+            break;
+        }
+    }
+
+    void removeUpcoming(int upcomingIndex)
+    {
+        // Walk the queue to find which stored index plays at this position.
+        const std::vector<const core::Item *> upcoming = queue.upcoming();
+        if (upcomingIndex < 0 || upcomingIndex >= int(upcoming.size())) return;
+        const core::Item *target = upcoming[upcomingIndex];
+        for (std::size_t i = 0; i < queue.size(); ++i) {
+            core::PlayQueue probe = queue;
+            probe.jumpTo(i);
+            if (probe.current() == &queue.upcoming()[0][0]) break;
+        }
+        // Items live in the queue's own vector, so the pointer difference from
+        // the first stored item gives the index.
+        const core::Item *first = nullptr;
+        {
+            core::PlayQueue probe = queue;
+            probe.jumpTo(0);
+            first = probe.current();
+        }
+        (void)first;
+        // Simplest reliable path: rebuild without the target.
+        std::vector<core::Item> kept;
+        std::size_t newCursor = 0;
+        const core::Item *current = queue.current();
+        for (const core::Item *item : upcoming) {
+            if (item == target) continue;
+            if (item == current) newCursor = kept.size();
+            kept.push_back(*item);
+        }
+        queue.clear();
+        for (const core::Item &item : kept) queue.add(item);
+        queue.jumpTo(newCursor);
+        queue.setRepeat(settings.repeat == 1 ? core::Repeat::All : settings.repeat == 2 ? core::Repeat::One : core::Repeat::Off);
+        toast("Removed from up next");
+        if (focusUpNext >= int(queue.upcoming().size())) focusUpNext = std::max(0, int(queue.upcoming().size()) - 1);
+    }
+
+    void updateAlbum(u32 k, u32 kd, bool tapped, const touchPosition &touch)
+    {
+        if (albumView < 0 || albumView >= int(library.albums().size())) { view = View::Section; return; }
+        const core::Album &a = library.albums()[albumView];
+        if (tapped && chromeTap(touch, false)) return;
+        if (kd & KEY_B) { back(); return; }
+        moveListFocus(focusAlbum, int(a.tracks.size()), 6, k);
+        if (kd & KEY_A && !a.tracks.empty()) playList(a.tracks, focusAlbum);
+        if (kd & KEY_Y && !a.tracks.empty()) openTrackMenu(a.tracks[focusAlbum]);
+        if (kd & KEY_X) disabled("Saving");
+        if (tapped) {
+            if (ui::hit(258.0f, 18.0f, 22.0f, 22.0f, touch.px, touch.py)) playList(a.tracks, 0, true);
+            else if (ui::hit(284.0f, 16.0f, 26.0f, 26.0f, touch.px, touch.py)) playList(a.tracks, 0);
+            else {
+                const int row = tappedRow(touch, 56.0f, 6, int(a.tracks.size()));
+                if (row >= 0) { if (row == focusAlbum) playList(a.tracks, row); else focusAlbum = row; }
+            }
+        }
+    }
+
+    void updateArtist(u32 k, u32 kd, bool tapped, const touchPosition &touch)
+    {
+        if (tapped && chromeTap(touch, false)) return;
+        if (kd & KEY_B) { back(); return; }
+        moveListFocus(focusArtist, int(artistAlbums.size()), 6, k);
+        if (artistAlbums.empty()) return;
+        if (kd & KEY_A) openAlbum(artistAlbums[focusArtist]);
+        if (kd & KEY_Y) openAlbumMenu(artistAlbums[focusArtist]);
+        if (tapped) {
+            const int row = tappedRow(touch, 56.0f, 6, int(artistAlbums.size()));
+            if (row >= 0) { if (row == focusArtist) openAlbum(artistAlbums[row]); else focusArtist = row; }
+        }
+    }
+
+    void updateNowPlaying(u32 k, u32 kd, bool tapped, const touchPosition &touch)
+    {
+        if (tapped && chromeTap(touch, true)) return;
+        if (kd & KEY_B) { back(); return; }
+        // Transport focus: 0 shuffle, 1 prev, 2 play, 3 next, 4 repeat.
+        if (left(k)) focusNow = (focusNow + 4) % 5;
+        if (right(k)) focusNow = (focusNow + 1) % 5;
+        if (kd & KEY_A) transportAction(focusNow);
+        if (kd & KEY_Y && nowTrack >= 0) openTrackMenu(nowTrack);
+        if (kd & KEY_X) disabled("Saving");
+        if (tapped) {
+            const float xs[5] = {96.0f, 128.0f, 160.0f, 192.0f, 224.0f};
+            const float rs[5] = {9.0f, 12.0f, 16.0f, 12.0f, 9.0f};
+            for (int i = 0; i < 5; ++i) {
+                if (ui::hit(xs[i] - rs[i] - 3, 100.0f - rs[i] - 3, rs[i] * 2 + 6, rs[i] * 2 + 6, touch.px, touch.py)) {
+                    focusNow = i;
+                    transportAction(i);
+                    return;
+                }
+            }
+            if (ui::hit(50.0f, 58.0f, 200.0f, 12.0f, touch.px, touch.py) && nowTrack >= 0) {
+                const int duration = library.tracks()[nowTrack].durationSeconds;
+                if (duration > 0) player.seek(double(touch.px - 50.0f) / 200.0 * duration);
+                return;
+            }
+            const std::vector<const core::Item *> upcoming = queue.upcoming();
+            for (int i = 1; i < 4 && i < int(upcoming.size()); ++i) {
+                if (ui::hit(RowX, 143.0f + (i - 1) * RowStep, RowW, RowH, touch.px, touch.py)) {
+                    if (focusNowQueue == i) {
+                        for (int j = 0; j < i; ++j) queue.next(true);
+                        startCurrent();
+                        focusNowQueue = -1;
+                    } else {
+                        focusNowQueue = i;
+                    }
+                    return;
+                }
+            }
+            focusNowQueue = -1;
+        }
+    }
+
+    void transportAction(int which)
+    {
+        switch (which) {
+        case 0:
+            settings.shuffle = !settings.shuffle;
+            settings.save();
+            queue.setShuffle(settings.shuffle, uint32_t(svcGetSystemTick() & 0xFFFFFFFF));
+            toast(settings.shuffle ? "Shuffle on" : "Shuffle off");
+            break;
+        case 1: skipPrevious(); break;
+        case 2: togglePlay(); break;
+        case 3: skipNext(true); break;
+        case 4:
+            settings.repeat = (settings.repeat + 1) % 3;
+            settings.save();
+            applyQueueModes();
+            queue.setShuffle(settings.shuffle, uint32_t(svcGetSystemTick() & 0xFFFFFFFF));
+            toast(settings.repeat == 0 ? "Repeat off" : settings.repeat == 1 ? "Repeat all" : "Repeat one");
+            break;
+        }
+    }
+
+    void runSearch()
+    {
+        std::string query;
+        if (platform::keyboard("Song, artist or album", searchQuery, query)) {
+            searchQuery = query;
+            searchResults = library.search(query);
+            focusSearch = 0;
+            listScroll = 0; listPx = 0.0f;
+        }
+    }
+
+    void updateSearch(u32 k, u32 kd, bool tapped, const touchPosition &touch)
+    {
+        if (kd & KEY_B) { back(); return; }
+        if (tapped && ui::hit(10.0f, 10.0f, 300.0f, 24.0f, touch.px, touch.py)) { runSearch(); return; }
+        if (searchQuery.empty() && (kd & KEY_A)) { runSearch(); return; }
+        moveListFocus(focusSearch, int(searchResults.size()), 6, k);
+        if (searchResults.empty()) {
+            if (kd & KEY_A) runSearch();
+            return;
+        }
+        if (kd & KEY_A) playList(searchResults, focusSearch);
+        if (kd & KEY_Y) openTrackMenu(searchResults[focusSearch]);
+        if (kd & KEY_X) disabled("Saving");
+        if (tapped) {
+            const int row = tappedRow(touch, 42.0f, 6, int(searchResults.size()));
+            if (row >= 0) { if (row == focusSearch) playList(searchResults, row); else focusSearch = row; }
+        }
+    }
+
+    void updateSettings(u32 k, u32 kd, bool tapped, const touchPosition &touch)
+    {
+        if (kd & KEY_B) { back(); return; }
+        const std::vector<SettingRow> rows = settingRows();
+        const int count = int(rows.size());
+        auto step = [&](int dir) {
+            for (int i = 0; i < count; ++i) {
+                focusSettings = (focusSettings + dir + count) % count;
+                if (!rows[focusSettings].header) break;
+            }
+        };
+        if (up(k)) step(-1);
+        if (down(k)) step(1);
+        if (kd & KEY_A) activateSetting(focusSettings);
+        if (tapped) {
+            float y = 12.0f;
+            for (int i = 0; i < count; ++i) {
+                const float h = rows[i].header ? 12.0f : 18.0f;
+                if (!rows[i].header && ui::hit(10.0f, y, 300.0f, h, touch.px, touch.py)) {
+                    if (focusSettings == i) activateSetting(i); else focusSettings = i;
+                    return;
+                }
+                y += h + 1.0f;
+            }
+        }
+    }
+
+    void updateVisualizer(u32 k, u32 kd, bool tapped, const touchPosition &touch)
+    {
+        if (kd & KEY_B) { back(); return; }
+        if (kd & KEY_A) togglePlay();
+        if (left(k)) { settings.visualizerStyle = (settings.visualizerStyle + 3) % 4; settings.save(); }
+        if (right(k)) { settings.visualizerStyle = (settings.visualizerStyle + 1) % 4; settings.save(); }
+        if (tapped) {
+            for (int i = 0; i < 4; ++i) {
+                if (ui::hit(34.0f + i * 63.0f, 76.0f, 61.0f, 20.0f, touch.px, touch.py)) { settings.visualizerStyle = i; settings.save(); return; }
+            }
+            if (ui::hit(146.0f, 150.0f, 28.0f, 28.0f, touch.px, touch.py)) togglePlay();
+            else if (ui::hit(30.0f, 108.0f, 260.0f, 32.0f, touch.px, touch.py)) go(View::NowPlaying);
+        }
+        // Dim the bottom screen after a while without input.
+        if (kd != 0 || tapped) visualizerDim = 0; else if (visualizerDim < 600) ++visualizerDim;
+    }
+
+    void updatePairing(u32 kd, bool tapped, const touchPosition &touch)
+    {
+        if (kd & KEY_B) { back(); return; }
+        if ((kd & (KEY_A | KEY_X)) || (tapped && ui::hit(10.0f, 212.0f, 300.0f, 24.0f, touch.px, touch.py))) {
+            toast("Pairing comes with the server release");
+        }
+    }
+
+    void updateMenu(u32 k, u32 kd, bool tapped, const touchPosition &touch)
+    {
+        const int count = int(menu.size());
+        if (up(k)) menuFocus = (menuFocus + count - 1) % count;
+        if (down(k)) menuFocus = (menuFocus + 1) % count;
+        if (kd & KEY_B) { menuOpen = false; return; }
+        if (kd & KEY_A) {
+            menuOpen = false;
+            MenuItem item = menu[menuFocus];
+            item.action();
+            return;
+        }
+        if (tapped) {
+            for (int i = 0; i < count; ++i) {
+                if (ui::hit(48.0f, 30.0f + 4.0f + i * RowStep, 150.0f, RowH, touch.px, touch.py)) {
+                    menuOpen = false;
+                    MenuItem item = menu[i];
+                    item.action();
+                    return;
+                }
+            }
+            if (ui::hit(206.0f, 30.0f, 22.0f, 22.0f, touch.px, touch.py)) menuOpen = false;
+            else if (!ui::hit(48.0f, 30.0f, 150.0f, 8.0f + count * RowStep, touch.px, touch.py)) menuOpen = false;
+        }
+    }
+
+    // ---- drawing: top screen ----
+    // Top screen grid. A top band for corner metadata (centred on y 14), a
+    // content band from 36 to 196 with the cover box on the left and the
+    // text column beside it, and a bottom band with the playing thumbnail
+    // and the legend.
+    static constexpr float BandTopY = 14.0f;
+    static constexpr float BoxX = 16.0f;
+    static constexpr float BoxY = 40.0f;
+    static constexpr float BoxSize = 150.0f;
+    static constexpr float BoxCenterY = BoxY + BoxSize / 2.0f;
+    static constexpr float TextXBox = BoxX + BoxSize + 18.0f;
+    static constexpr float TextXFog = 165.0f;
+    static constexpr float TextRight = TopW - 14.0f;
+    static constexpr float CornerY = 206.0f;
+    static constexpr float LegendY = 227.0f;
+    bool fogMode = false; // set by drawShowcaseArt for the frame
+    float textX() const { return fogMode ? TextXFog : TextXBox; }
+    float textMaxW() const { return TextRight - textX(); }
+
+    void drawShowcaseArt(int albumIndex, int trackIndex = -1)
+    {
+        const bool playlist = trackIndex < 0 && albumIndex >= 0 && albumIndex < int(library.albums().size()) && library.albums()[albumIndex].isPlaylist;
+        const art::Image *image = playlist ? nullptr : trackIndex >= 0 ? trackArt(trackIndex) : albumArt(albumIndex);
+        fogMode = settings.artOnTopScreen && image != nullptr;
+        if (playlist) {
+            ui::roundRect(BoxX, BoxY + 3.0f, BoxSize, BoxSize, 12.0f, ui::withAlpha(ui::ShadowBase, 0x16));
+            drawMosaic(library.albums()[albumIndex], BoxX, BoxY, BoxSize, ui::TopBg);
+            return;
+        }
+        if (fogMode) {
+            art::draw(*image, -20.0f, -30.0f, 300.0f, 300.0f);
+            // Fog the art into the white of the screen.
+            ui::gradientH(110.0f, -30.0f, 170.0f, 300.0f, ui::withAlpha(ui::TopBg, 0), ui::TopBg);
+            ui::rect(280.0f, 0.0f, 120.0f, TopH, ui::TopBg);
+            ui::gradientV(-20.0f, 130.0f, 300.0f, 110.0f, ui::withAlpha(ui::TopBg, 0), ui::withAlpha(ui::TopBg, 235));
+            // A stronger band at the top so the corner labels stay readable.
+            ui::gradientV(-20.0f, 0.0f, 300.0f, 34.0f, ui::withAlpha(ui::TopBg, 225), ui::withAlpha(ui::TopBg, 120));
+            ui::gradientV(-20.0f, 34.0f, 300.0f, 40.0f, ui::withAlpha(ui::TopBg, 120), ui::withAlpha(ui::TopBg, 0));
+            return;
+        }
+        if (albumIndex < 0 && trackIndex < 0) return;
+        // Framed cover, or a soft placeholder when there is no picture.
+        ui::roundRect(BoxX, BoxY + 3.0f, BoxSize, BoxSize, 12.0f, ui::withAlpha(ui::ShadowBase, 0x16));
+        if (image != nullptr) {
+            art::draw(*image, BoxX, BoxY, BoxSize, BoxSize);
+            ui::roundCorners(BoxX, BoxY, BoxSize, BoxSize, 12.0f, ui::TopBg, ui::TopBg);
+        } else {
+            ui::roundRect(BoxX, BoxY, BoxSize, BoxSize, 12.0f, ui::BottomBg);
+            ui::icon(Icon::Note, BoxX + BoxSize / 2.0f, BoxCenterY, 50.0f, ui::Line, ui::BottomBg);
+        }
+    }
+
+    void drawTopCorners(bool withRecent)
+    {
+        // Top-left: recent covers and a count, or the scan state.
+        const float ty = BandTopY - 5.0f; // 10 px text centred on the band
+        if (scanning) {
+            ui::text("Scanning · " + std::to_string(scanScanned()) + " of " + std::to_string(scanCollected()), BoxX, ty, 10.0f, ui::Meta);
+        } else if (withRecent) {
+            const int n = int(library.albums().size());
+            float x = BoxX;
+            for (int i = 0; i < 3 && i < n; ++i) {
+                if (library.albums()[i].isPlaylist) {
+                    drawMosaic(library.albums()[i], x, BandTopY - 7.0f, 14.0f, ui::TopBg);
+                } else {
+                    const art::Image *image = albumArt(i);
+                    if (image != nullptr) {
+                        art::draw(*image, x, BandTopY - 7.0f, 14.0f, 14.0f);
+                        ui::roundCorners(x, BandTopY - 7.0f, 14.0f, 14.0f, 3.0f, ui::TopBg, ui::TopBg);
+                    } else {
+                        ui::roundRect(x, BandTopY - 7.0f, 14.0f, 14.0f, 3.0f, ui::Line);
+                        ui::icon(Icon::Note, x + 7.0f, BandTopY, 8.0f, ui::Meta, ui::Line);
+                    }
+                }
+                x += 18.0f;
+            }
+            if (n > 0) ui::text(plural(n, "album", "albums") + " · " + plural(int(library.tracks().size()), "song", "songs"), x + 2.0f, ty, 10.0f, ui::Meta);
+        }
+        float x = TextRight - ui::textWidth(status.clock, 10.0f);
+        ui::text(status.clock, x, ty, 10.0f, ui::Meta);
+        x -= 16.0f;
+        ui::icon(Icon::Battery, x, BandTopY, 13.0f, ui::Meta, ui::TopBg);
+        ui::rect(x - 5.0f, BandTopY - 2.2f, 8.5f * status.battery / 5.0f, 4.4f, status.charging ? ui::Blue : ui::Meta);
+        x -= 18.0f;
+        for (int bar = 0; bar < 3; ++bar) {
+            const float bh = 4.0f + bar * 3.0f;
+            ui::roundRect(x - 6.0f + bar * 4.5f, BandTopY + 5.0f - bh, 3.0f, bh, 1.0f, bar < status.wifi ? ui::Meta : ui::Line);
+        }
+        x -= 18.0f;
+        if (status.headphones) ui::icon(Icon::Headphones, x, BandTopY, 13.0f, ui::Meta, ui::TopBg);
+    }
+
+    void drawPlayingCorner()
+    {
+        if (nowTrack < 0 || view == View::NowPlaying) return;
+        const core::Track &t = library.tracks()[nowTrack];
+        const art::Image *image = trackArt(nowTrack);
+        if (image != nullptr) { art::draw(*image, BoxX, CornerY, 26.0f, 26.0f); ui::roundCorners(BoxX, CornerY, 26.0f, 26.0f, 5.0f, ui::TopBg, ui::TopBg); }
+        else { ui::roundRect(BoxX, CornerY, 26.0f, 26.0f, 5.0f, ui::BottomBg); ui::icon(Icon::Note, BoxX + 13.0f, CornerY + 13.0f, 12.0f, ui::Meta, ui::BottomBg); }
+        ui::marquee("corner", t.title, BoxX + 32.0f, CornerY + 1.0f, 10.0f, ui::Ink, 150.0f, ui::Weight::Bold);
+        const std::string state = player.playing() ? "Playing" : player.loaded() ? "Paused" : "Stopped";
+        ui::text(state + " · " + core::formatClock(int(player.positionSeconds())), BoxX + 32.0f, CornerY + 14.0f, 10.0f, ui::Meta);
+    }
+
+    void drawLegend(std::initializer_list<ui::LegendItem> items)
+    {
+        std::vector<ui::LegendItem> v(items);
+        ui::legend(v.data(), int(v.size()), TextRight, LegendY);
+    }
+
+    // Empty states sit in the middle of the screen rather than in the text column.
+    void drawEmptyTop(const std::string &title, const std::string &sub, const std::string &meta = "")
+    {
+        const float block = 24.0f + 6.0f + 13.0f + (meta.empty() ? 0.0f : 16.0f);
+        float y = BoxCenterY - block / 2.0f;
+        ui::text(title, TopW / 2.0f, y, 24.0f, ui::Ink, ui::Align::Center, 0.0f, ui::Weight::Bold);
+        y += 30.0f;
+        ui::text(sub, TopW / 2.0f, y, 13.0f, ui::InkSoft, ui::Align::Center);
+        if (!meta.empty()) ui::text(meta, TopW / 2.0f, y + 18.0f, 10.0f, ui::Meta, ui::Align::Center);
+    }
+
+    void drawEmptyCard(Icon icon, const std::string &title, const std::string &line1, const std::string &line2 = "", const std::string &tagText = "")
+    {
+        const float h = 96.0f + (line2.empty() ? 0.0f : 12.0f) + (tagText.empty() ? 0.0f : 20.0f);
+        const float y = (BotH + 30.0f) / 2.0f - h / 2.0f; // centred below the tab row
+        ui::roundRect(30.0f, y + 2.0f, 260.0f, h, 8.0f, ui::withAlpha(ui::ShadowBase, 0x14));
+        ui::roundRect(30.0f, y, 260.0f, h, 8.0f, ui::Sheet);
+        ui::icon(icon, BotW / 2.0f, y + 24.0f, 24.0f, ui::Line, ui::Sheet);
+        ui::text(title, BotW / 2.0f, y + 44.0f, 13.0f, ui::Ink, ui::Align::Center, 0.0f, ui::Weight::Bold);
+        ui::text(line1, BotW / 2.0f, y + 64.0f, 10.0f, ui::Meta, ui::Align::Center, 240.0f);
+        float next = y + 76.0f;
+        if (!line2.empty()) { ui::text(line2, BotW / 2.0f, next, 10.0f, ui::Meta, ui::Align::Center, 240.0f); next += 12.0f; }
+        if (!tagText.empty()) {
+            const float w = ui::textWidth(tagText, 8.0f, ui::Weight::Bold) + 12.0f;
+            ui::tag(tagText, BotW / 2.0f - w / 2.0f, next + 4.0f, ui::Line, ui::Meta);
+        }
+    }
+
+    // The title block is centred on the cover box; `extra` is the height of
+    // anything the caller draws below the metadata (the progress line).
+    // Returns the y the title was drawn at.
+    float drawShowcaseText(const std::string &title, const std::string &sub, const std::string &meta, float extra = 0.0f)
+    {
+        const float x = textX();
+        const float maxW = textMaxW();
+        const float size = fittedShowcaseSize(title);
+        const float block = size + 6.0f + 13.0f + 3.0f + 10.0f + (meta.empty() ? -13.0f : 0.0f) + extra;
+        const float y = BoxCenterY - block / 2.0f;
+        ui::marquee("showcase", title, x, y, size, ui::Ink, maxW, ui::Weight::Bold);
+        ui::marquee("showcase-sub", sub, x, y + size + 6.0f, 13.0f, ui::InkSoft, maxW);
+        ui::text(meta, x, y + size + 22.0f, 10.0f, ui::Meta, ui::Align::Left, maxW);
+        return y;
+    }
+
+    void drawContextLegend()
+    {
+        switch (view) {
+        case View::Section:
+            if (section == Section::Home) drawLegend({{"A", "Open"}, {"X", "Save"}, {"Y", "Menu"}});
+            else if (section == Section::UpNext) drawLegend({{"A", "Play now"}, {"X", "Remove"}, {"Y", "Menu"}});
+            else if (section == Section::Downloads) drawLegend({{"B", "Home"}});
+            else drawLegend({{"A", "Play"}, {"B", "Home"}, {"Y", "Menu"}});
+            break;
+        case View::Album:
+        case View::Artist:
+        case View::Search:
+            drawLegend({{"A", "Play"}, {"B", "Back"}, {"Y", "Menu"}});
+            break;
+        case View::NowPlaying:
+            drawLegend({{"A", player.playing() ? "Pause" : "Play"}, {"L", "Prev"}, {"R", "Next"}, {"Y", "Menu"}});
+            break;
+        default:
+            break;
+        }
+    }
+
+    void drawTop()
+    {
+        ui::rect(0, 0, TopW, TopH, ui::TopBg);
+        const int album = showcaseAlbum();
+        // Whatever the bottom screen is doing, the top screen shows what is
+        // playing. Only the information views keep their own top screen.
+        if (nowTrack >= 0 && view != View::Settings && view != View::Pairing && view != View::Visualizer) {
+            drawTopNowPlaying(albumIndexOfTrack(nowTrack));
+            drawContextLegend();
+            drawToast();
+            return;
+        }
+        switch (view) {
+        case View::Section: drawTopSection(album); break;
+        case View::Album:
+        case View::Artist: {
+            drawShowcaseArt(album);
+            drawTopCorners(false);
+            ui::icon(Icon::Back, BoxX + 3.0f, BandTopY, 9.0f, ui::Meta, ui::TopBg);
+            ui::text(view == View::Album ? (artistView.empty() ? "Library" : artistView) : "Artists", BoxX + 11.0f, BandTopY - 5.0f, 10.0f, ui::Meta);
+            if (album >= 0) {
+                const core::Album &a = library.albums()[album];
+                std::string meta = (a.year.empty() ? "" : a.year + " · ") + plural(int(a.tracks.size()), "song", "songs") + " · " + minutesText(a.durationSeconds);
+                const float y = drawShowcaseText(a.title, a.artist, meta, 22.0f);
+                ui::tag(plural(int(a.tracks.size()), "song on the SD card", "songs on the SD card"), textX(), y + fittedShowcaseSize(a.title) + 40.0f, ui::Tag, ui::TagText);
+            }
+            drawPlayingCorner();
+            drawLegend({{"A", "Play"}, {"B", "Back"}, {"Y", "Menu"}});
+            break;
+        }
+        case View::NowPlaying: drawTopNowPlaying(album); break;
+        case View::Search:
+            drawShowcaseArt(album, (!searchResults.empty() && focusSearch < int(searchResults.size())) ? searchResults[focusSearch] : -1);
+            drawTopCorners(false);
+            ui::text(searchQuery.empty() ? "Search" : "Search · \"" + searchQuery + "\" · " + plural(int(searchResults.size()), "result", "results"), BoxX, BandTopY - 5.0f, 10.0f, ui::Meta);
+            if (!searchResults.empty() && focusSearch < int(searchResults.size())) {
+                const core::Track &t = library.tracks()[searchResults[focusSearch]];
+                drawShowcaseText(t.title, t.artist, t.album + (t.durationSeconds > 0 ? " · " + core::formatClock(t.durationSeconds) : ""));
+            } else {
+                drawEmptyTop(searchQuery.empty() ? "Find a song" : "Nothing found", searchQuery.empty() ? "Press A to open the keyboard" : "Try part of a title, artist or album");
+            }
+            drawPlayingCorner();
+            drawLegend({{"A", "Play"}, {"B", "Back"}, {"Y", "Menu"}});
+            break;
+        case View::Settings: drawTopSettings(); break;
+        case View::Visualizer: drawTopVisualizer(album); break;
+        case View::Pairing: drawTopPairing(); break;
+        }
+        drawToast();
+    }
+
+    void drawTopSection(int album)
+    {
+        if (section == Section::Downloads) {
+            drawTopCorners(false);
+            ui::text("Downloads", BoxX, BandTopY - 5.0f, 10.0f, ui::Meta);
+            ui::roundRect(75.0f, 55.0f, 250.0f, 120.0f, 8.0f, ui::withAlpha(ui::ShadowBase, 0x14));
+            ui::roundRect(75.0f, 53.0f, 250.0f, 120.0f, 8.0f, ui::Sheet);
+            ui::text("SD card", 87.0f, 63.0f, 10.0f, ui::Meta);
+            const int64_t total = platform::sdTotalBytes();
+            const int64_t free = platform::sdFreeBytes();
+            if (total > 0 && free >= 0) {
+                ui::text(gigabytes(free) + " free", 313.0f, 63.0f, 10.0f, ui::Ink, ui::Align::Right);
+                ui::roundRect(87.0f, 78.0f, 226.0f, 7.0f, 3.5f, ui::Line);
+                const float used = float(double(total - free) / double(total));
+                ui::roundRect(87.0f, 78.0f, 226.0f * used, 7.0f, 3.5f, ui::InkFaint);
+            }
+            ui::text(plural(int(library.tracks().size()), "song", "songs") + " in " + settings.musicFolder + " · " + minutesText(library.totalDurationSeconds()), 87.0f, 93.0f, 10.0f, ui::Meta, ui::Align::Left, 226.0f);
+            ui::rect(87.0f, 110.0f, 226.0f, 1.0f, ui::Line);
+            ui::text("Saving songs from a server", 87.0f, 118.0f, 12.0f, ui::Ink, ui::Align::Left, 0.0f, ui::Weight::Bold);
+            ui::text("Comes with the server release. Until then, copy", 87.0f, 134.0f, 8.0f, ui::Meta);
+            ui::text("music to the SD card and it shows up in Library.", 87.0f, 146.0f, 10.0f, ui::Meta);
+            drawPlayingCorner();
+            drawLegend({{"B", "Back"}});
+            return;
+        }
+        int focusedTrack = -1;
+        if (section == Section::Songs) {
+            const std::vector<int> &all = allTracks();
+            if (focusSongs < int(all.size())) focusedTrack = all[focusSongs];
+        } else if (section == Section::UpNext) {
+            const std::vector<const core::Item *> upcoming = queue.upcoming();
+            if (focusUpNext < int(upcoming.size())) focusedTrack = upcoming[focusUpNext]->libraryIndex;
+        }
+        drawShowcaseArt(album, focusedTrack);
+        drawTopCorners(true);
+        if (album >= 0 && album < int(library.albums().size())) {
+            const core::Album &a = library.albums()[album];
+            if (section == Section::Songs || section == Section::UpNext || section == Section::Home) {
+                const int track = focusedTrack;
+                if (track >= 0) {
+                    const core::Track &t = library.tracks()[track];
+                    drawShowcaseText(t.title, t.artist, t.album + (t.durationSeconds > 0 ? " · " + core::formatClock(t.durationSeconds) : "") + " · " + core::formatName(t.format));
+                } else {
+                    drawShowcaseText(a.title, a.artist, (a.year.empty() ? "" : a.year + " · ") + plural(int(a.tracks.size()), "song", "songs") + " · " + minutesText(a.durationSeconds));
+                }
+            } else {
+                const std::vector<std::string> artists = library.artists();
+                const std::string artist = focusArtists < int(artists.size()) ? artists[focusArtists] : a.artist;
+                const std::vector<int> albums = library.albumsByArtist(artist);
+                int songs = 0;
+                for (int i : albums) songs += int(library.albums()[i].tracks.size());
+                drawShowcaseText(artist, "Artist", plural(int(albums.size()), "album", "albums") + " · " + plural(songs, "song", "songs"));
+            }
+        } else if (!scanning && library.tracks().empty()) {
+            drawEmptyTop("Nothing here yet", "Copy music to " + settings.musicFolder, "MP3, Ogg Vorbis, Opus and WAV");
+        } else if (section == Section::UpNext) {
+            drawEmptyTop("Up next is empty", "Pick an album or a song to start");
+        }
+        drawPlayingCorner();
+        if (section == Section::Home) drawLegend({{"A", "Open"}, {"X", "Save"}, {"Y", "Menu"}});
+        else if (section == Section::UpNext) drawLegend({{"A", "Play now"}, {"X", "Remove"}, {"Y", "Menu"}});
+        else drawLegend({{"A", "Play"}, {"B", "Home"}, {"Y", "Menu"}});
+    }
+
+    void drawTopNowPlaying(int album)
+    {
+        drawShowcaseArt(album, nowTrack);
+        drawTopCorners(false);
+        const float level = player.level();
+        ui::equaliser(BoxX, BandTopY - 6.0f, level, ui::Blue, int(frame));
+        std::string state = player.playing() ? "Now playing" : player.loaded() ? "Paused" : "Stopped";
+        if (nowTrack >= 0) state += std::string(" · ") + core::formatName(library.tracks()[nowTrack].format);
+        const std::vector<const core::Item *> queued = queue.upcoming();
+        if (queued.size() > 1) state += " · " + plural(int(queued.size()) - 1, "song", "songs") + " queued";
+        ui::text(state, BoxX + 14.0f, BandTopY - 5.0f, 10.0f, ui::Meta);
+        if (nowTrack >= 0) {
+            const core::Track &t = library.tracks()[nowTrack];
+            const float y = drawShowcaseText(t.title, t.artist, t.album + (library.albumOf(nowTrack) && !library.albumOf(nowTrack)->year.empty() ? " · " + library.albumOf(nowTrack)->year : ""), 30.0f);
+            const float barY = y + fittedShowcaseSize(t.title) + 46.0f;
+            const float pos = float(player.positionSeconds());
+            const float fraction = t.durationSeconds > 0 ? pos / t.durationSeconds : 0.0f;
+            ui::progressBar(textX(), barY, textMaxW(), 3.0f, fraction, ui::Line);
+            ui::text(core::formatClock(int(pos)), textX(), barY + 7.0f, 10.0f, ui::Meta);
+            ui::text(t.durationSeconds > 0 ? core::formatClock(t.durationSeconds) : "", TextRight, barY + 7.0f, 10.0f, ui::Meta, ui::Align::Right);
+        } else {
+            drawEmptyTop("Nothing playing", "Pick an album or a song", "START plays everything");
+        }
+        // Bottom-left: up next.
+        const std::vector<const core::Item *> upcoming = queue.upcoming();
+        if (upcoming.size() > 1) {
+            const core::Item *next = upcoming[1];
+            const art::Image *image = trackArt(next->libraryIndex);
+            if (image != nullptr) { art::draw(*image, BoxX, CornerY, 26.0f, 26.0f); ui::roundCorners(BoxX, CornerY, 26.0f, 26.0f, 5.0f, ui::TopBg, ui::TopBg); }
+            else { ui::roundRect(BoxX, CornerY, 26.0f, 26.0f, 5.0f, ui::BottomBg); ui::icon(Icon::Note, BoxX + 13.0f, CornerY + 13.0f, 12.0f, ui::Meta, ui::BottomBg); }
+            ui::marquee("corner", next->title, BoxX + 32.0f, CornerY + 1.0f, 10.0f, ui::Ink, 150.0f, ui::Weight::Bold);
+            ui::text("Up next · " + next->artist, BoxX + 32.0f, CornerY + 14.0f, 10.0f, ui::Meta, ui::Align::Left, 150.0f);
+        } else if (nowTrack >= 0) {
+            ui::text("Last song in up next", BoxX, CornerY + 8.0f, 10.0f, ui::Meta);
+        }
+        if (view == View::NowPlaying) drawLegend({{"A", player.playing() ? "Pause" : "Play"}, {"L", "Prev"}, {"R", "Next"}, {"Y", "Menu"}});
+    }
+
+    void drawTopSettings()
+    {
+        drawTopCorners(false);
+        ui::text("Settings · 3dsFM " APP_VERSION " · " + std::string(platform::isNew3ds() ? "New 3DS" : "3DS"), BoxX, BandTopY - 5.0f, 10.0f, ui::Meta);
+        const std::vector<SettingRow> rows = settingRows();
+        if (focusSettings >= 0 && focusSettings < int(rows.size())) {
+            const SettingRow &r = rows[focusSettings];
+            ui::roundRect(75.0f, 57.0f, 250.0f, 110.0f, 8.0f, ui::withAlpha(ui::ShadowBase, 0x14));
+            ui::roundRect(75.0f, 55.0f, 250.0f, 110.0f, 8.0f, ui::Sheet);
+            ui::text(r.label, 87.0f, 66.0f, 15.0f, ui::Ink, ui::Align::Left, 226.0f, ui::Weight::Bold);
+            // Wrap the help text by words into 8 px lines.
+            std::string line;
+            float y = 86.0f;
+            std::string word;
+            std::vector<std::string> lines;
+            for (size_t i = 0; i <= r.help.size(); ++i) {
+                const char c = i < r.help.size() ? r.help[i] : ' ';
+                if (c == ' ') {
+                    const std::string candidate = line.empty() ? word : line + " " + word;
+                    if (ui::textWidth(candidate, 10.0f) > 226.0f && !line.empty()) {
+                        lines.push_back(line);
+                        line = word;
+                    } else {
+                        line = candidate;
+                    }
+                    word.clear();
+                } else {
+                    word += c;
+                }
+            }
+            if (!line.empty()) lines.push_back(line);
+            for (const std::string &l : lines) {
+                if (y > 150.0f) break;
+                ui::text(l, 87.0f, y, 10.0f, ui::InkSoft);
+                y += 11.0f;
+            }
+            if (!r.enabled) ui::tag("Needs a server", 87.0f, 148.0f, ui::Line, ui::Meta);
+        }
+        drawPlayingCorner();
+        drawLegend({{"A", "Change"}, {"B", "Back"}});
+    }
+
+    void drawTopVisualizer(int album)
+    {
+        const art::Image *image = nowTrack >= 0 ? trackArt(nowTrack) : albumArt(album);
+        const u32 colorA = image != nullptr ? image->colorA : ui::Ink;
+        const u32 colorB = image != nullptr ? image->colorB : ui::BlueDeep;
+        computeBands();
+        const int style = settings.visualizerStyle;
+        if (style == 3) {
+            if (image != nullptr) {
+                art::draw(*image, 110.0f, 30.0f, 180.0f, 180.0f);
+            } else {
+                ui::roundRect(110.0f, 30.0f, 180.0f, 180.0f, 12.0f, ui::BottomBg);
+                ui::icon(Icon::Note, 200.0f, 120.0f, 60.0f, ui::Line, ui::BottomBg);
+            }
+        } else if (style == 0) {
+            for (int i = 0; i < 20; ++i) {
+                const float h = 4.0f + bands[i] * 150.0f;
+                const float x = 20.0f + i * 18.0f;
+                ui::roundRect(x, 210.0f - h, 14.0f, h, 3.0f, (i % 2 == 0) ? colorA : colorB);
+                ui::roundRect(x, 210.0f - h - 7.0f, 14.0f, 3.0f, 1.5f, ui::withAlpha((i % 2 == 0) ? colorA : colorB, 0x60));
+            }
+        } else if (style == 1) {
+            float samples[200];
+            const int n = player.recentSamples(samples, 200);
+            for (int i = 1; i < n; ++i) {
+                const float x0 = 20.0f + (i - 1) * 360.0f / n;
+                const float x1 = 20.0f + i * 360.0f / n;
+                ui::line(x0, 125.0f - samples[i - 1] * 90.0f, x1, 125.0f - samples[i] * 90.0f, 2.0f, (i % 40 < 20) ? colorA : colorB);
+            }
+        } else {
+            for (int i = 0; i < 20; ++i) {
+                const float r = 2.0f + bands[i] * 16.0f;
+                ui::circle(30.0f + i * 18.0f, 120.0f - bands[i] * 70.0f, r, (i % 2 == 0) ? colorA : colorB);
+                ui::circle(30.0f + i * 18.0f, 120.0f + bands[i] * 70.0f, r * 0.6f, ui::withAlpha((i % 2 == 0) ? colorA : colorB, 0x80));
+            }
+        }
+        // Corner: what is playing.
+        if (nowTrack >= 0) {
+            const core::Track &t = library.tracks()[nowTrack];
+            if (image != nullptr) { art::draw(*image, BoxX, 8.0f, 24.0f, 24.0f); ui::roundCorners(BoxX, 8.0f, 24.0f, 24.0f, 5.0f, ui::TopBg, ui::TopBg); }
+            const float tx = image != nullptr ? BoxX + 30.0f : BoxX;
+            ui::marquee("viz", t.title, tx, 6.0f, 12.0f, ui::Ink, 200.0f, ui::Weight::Bold);
+            ui::text(t.artist + " · " + core::formatClock(int(player.positionSeconds())) + (t.durationSeconds > 0 ? " / " + core::formatClock(t.durationSeconds) : ""), tx, 21.0f, 10.0f, ui::Meta, ui::Align::Left, 200.0f);
+        }
+        ui::text(status.clock, TextRight, BandTopY - 5.0f, 10.0f, ui::Meta, ui::Align::Right);
+        static const char *names[4] = {"Bars", "Wave", "Dots", "Art only"};
+        ui::text(std::string(names[style]) + " · colors from the album art", BoxX, LegendY - 5.0f, 10.0f, ui::Meta);
+        drawLegend({{"A", player.playing() ? "Pause" : "Play"}, {"B", "Back"}, {"L", "Prev"}, {"R", "Next"}});
+    }
+
+    void computeBands()
+    {
+        float samples[512];
+        const int n = player.recentSamples(samples, 512);
+        if (n < 64 || !player.playing()) {
+            for (float &b : bands) b *= 0.85f;
+            return;
+        }
+        // Goertzel at 20 log-spaced frequencies, assuming 44.1 kHz; the
+        // picture is decorative so the exact rate does not matter.
+        const float rate = 44100.0f;
+        for (int b = 0; b < 20; ++b) {
+            const float freq = 60.0f * std::pow(200.0f, float(b) / 19.0f);
+            const float w = 2.0f * 3.14159265f * freq / rate;
+            const float coeff = 2.0f * std::cos(w);
+            float s0 = 0.0f;
+            float s1 = 0.0f;
+            float s2 = 0.0f;
+            for (int i = 0; i < n; ++i) {
+                s0 = samples[i] + coeff * s1 - s2;
+                s2 = s1;
+                s1 = s0;
+            }
+            const float power = s1 * s1 + s2 * s2 - coeff * s1 * s2;
+            float value = std::sqrt(power > 0.0f ? power : 0.0f) / (n * 0.08f);
+            value = std::log10(1.0f + value * 9.0f);
+            if (value > 1.0f) value = 1.0f;
+            bands[b] = bands[b] * 0.6f + value * 0.4f;
+        }
+    }
+
+    void drawTopPairing()
+    {
+        // A fan of up to three distinct song covers, fogging in from the
+        // right; nothing is drawn where the library has no art.
+        std::vector<int> picks;
+        std::vector<uint64_t> seen;
+        for (const core::Track &t : library.tracks()) {
+            if (!t.hasEmbeddedArt || std::find(seen.begin(), seen.end(), t.artHash) != seen.end()) continue;
+            seen.push_back(t.artHash);
+            picks.push_back(int(&t - &library.tracks()[0]));
+            if (picks.size() == 3) break;
+        }
+        if (picks.empty()) {
+            for (int i = 0; i < int(library.albums().size()) && picks.size() < 3; ++i) {
+                if (!library.albums()[i].artPath.empty() && !library.albums()[i].tracks.empty()) picks.push_back(library.albums()[i].tracks[0]);
+            }
+        }
+        const float xs[3] = {262.0f, 300.0f, 338.0f};
+        const float ys[3] = {44.0f, 84.0f, 124.0f};
+        for (size_t i = 0; i < picks.size(); ++i) {
+            const art::Image *image = trackArt(picks[i]);
+            if (image == nullptr) continue;
+            ui::roundRect(xs[i] + 2.0f, ys[i] + 4.0f, 110.0f, 110.0f, 10.0f, ui::withAlpha(ui::ShadowBase, 0x30));
+            art::draw(*image, xs[i], ys[i], 110.0f, 110.0f);
+            ui::roundCorners(xs[i], ys[i], 110.0f, 110.0f, 10.0f, ui::TopBg, ui::TopBg);
+        }
+        ui::gradientH(240.0f, 0.0f, 160.0f, TopH, ui::withAlpha(ui::TopBg, 0), ui::withAlpha(ui::TopBg, 200));
+        ui::gradientV(240.0f, 0.0f, 160.0f, 40.0f, ui::TopBg, ui::withAlpha(ui::TopBg, 0));
+        ui::gradientV(240.0f, 196.0f, 160.0f, 44.0f, ui::withAlpha(ui::TopBg, 0), ui::TopBg);
+        drawTopCorners(false);
+        ui::text("Not paired", BoxX, BandTopY - 5.0f, 10.0f, ui::Meta);
+        ui::text("3dsFM", BoxX, 58.0f, 40.0f, ui::Ink, ui::Align::Left, 0.0f, ui::Weight::Bold);
+        ui::text("Music from your own server,", BoxX, 108.0f, 12.0f, ui::InkSoft);
+        ui::text("saved to your SD card.", BoxX, 123.0f, 12.0f, ui::InkSoft);
+        ui::text("Pairing with a 3dsFM server comes in a later build.", BoxX, 148.0f, 10.0f, ui::Meta, ui::Align::Left, 220.0f);
+        ui::text("Until then the Music folder on the SD card is the library.", BoxX, 160.0f, 10.0f, ui::Meta, ui::Align::Left, 220.0f);
+        drawPlayingCorner();
+        drawLegend({{"A", "Scan"}, {"X", "Type address"}, {"B", "Back"}});
+    }
+
+    void drawToast()
+    {
+        if (toastFrames <= 0) return;
+        const float w = ui::textWidth(toastText, 10.0f) + 24.0f;
+        const float x = (TopW - w) / 2.0f;
+        const float alpha = toastFrames < 20 ? toastFrames / 20.0f : 1.0f;
+        ui::roundRect(x, 183.0f, w, 20.0f, 10.0f, ui::withAlpha(ui::Ink, u8(0x18 * alpha)));
+        ui::roundRect(x, 181.0f, w, 20.0f, 10.0f, ui::withAlpha(ui::Sheet, u8(255 * alpha)));
+        ui::icon(Icon::Check, x + 12.0f, 191.0f, 9.0f, ui::withAlpha(ui::Blue, u8(255 * alpha)), ui::Sheet);
+        ui::text(toastText, x + 22.0f, 187.0f, 10.0f, ui::withAlpha(ui::Ink, u8(255 * alpha)));
+    }
+
+    // ---- drawing: bottom screen ----
+    void drawBottomChrome(bool withTabs)
+    {
+        if (withTabs) {
+            static const Icon icons[5] = {Icon::Home, Icon::Note, Icon::Person, Icon::Queue, Icon::Download};
+            for (int i = 0; i < 5; ++i) {
+                const bool active = view == View::Section && int(section) == i;
+                ui::icon(icons[i], TabX0 + i * TabStep, TabY, 15.0f, active ? ui::Blue : ui::Meta, ui::BottomBg);
+            }
+        }
+        ui::roundButton(RoundX0, RoundY, 10.0f, Icon::Search, false, view == View::Search);
+        ui::roundButton(RoundX0 + RoundStep, RoundY, 10.0f, Icon::Note, false, view == View::NowPlaying);
+        ui::roundButton(RoundX0 + 2 * RoundStep, RoundY, 10.0f, Icon::Gear, true, view == View::Settings);
+    }
+
+    // Tiles are rounded by painting their corners in the colour behind them.
+    void drawTrackTile(int trackIndex, float x, float y, float size, u32 bgTop = ui::BottomBg, u32 bgBottom = 0)
+    {
+        drawTileImage(trackArt(trackIndex), x, y, size, bgTop, bgBottom);
+    }
+
+    // A playlist's picture: the first four songs' covers in a 2x2 grid.
+    void drawMosaic(const core::Album &a, float x, float y, float size, u32 bgTop = ui::BottomBg, u32 bgBottom = 0)
+    {
+        const float half = size / 2.0f;
+        ui::rect(x, y + 1.0f, size, size, ui::withAlpha(ui::ShadowBase, 0x1E));
+        int slot = 0;
+        for (int t : a.mosaicTracks) {
+            if (slot >= 4) break;
+            const float qx = x + (slot % 2) * half;
+            const float qy = y + (slot / 2) * half;
+            const art::Image *image = trackArt(t);
+            if (image != nullptr) art::draw(*image, qx, qy, half, half);
+            else ui::rect(qx, qy, half, half, slot % 2 == slot / 2 ? ui::BottomBg : ui::Line);
+            ++slot;
+        }
+        for (; slot < 4; ++slot) {
+            ui::rect(x + (slot % 2) * half, y + (slot / 2) * half, half, half, slot % 2 == slot / 2 ? ui::BottomBg : ui::Line);
+        }
+        ui::roundCorners(x, y, size, size, tileRadius(size), bgTop, bgBottom == 0 ? bgTop : bgBottom);
+    }
+
+    static float tileRadius(float size) { return size >= 100.0f ? 12.0f : size >= 40.0f ? 6.0f : size >= 20.0f ? 4.0f : 3.0f; }
+
+    void drawTile(int albumIndex, float x, float y, float size, u32 bgTop = ui::BottomBg, u32 bgBottom = 0)
+    {
+        if (albumIndex >= 0 && albumIndex < int(library.albums().size()) && library.albums()[albumIndex].isPlaylist) {
+            drawMosaic(library.albums()[albumIndex], x, y, size, bgTop, bgBottom);
+            return;
+        }
+        drawTileImage(albumArt(albumIndex), x, y, size, bgTop, bgBottom);
+    }
+
+    void drawTileImage(const art::Image *image, float x, float y, float size, u32 bgTop = ui::BottomBg, u32 bgBottom = 0)
+    {
+        const float r = tileRadius(size);
+        ui::roundRect(x, y + 1.0f, size, size, r, ui::withAlpha(ui::ShadowBase, 0x1E));
+        if (image != nullptr) {
+            art::draw(*image, x, y, size, size);
+            ui::roundCorners(x, y, size, size, r, bgTop, bgBottom == 0 ? bgTop : bgBottom);
+        } else {
+            ui::roundRect(x, y, size, size, r, ui::Sheet);
+            ui::icon(Icon::Note, x + size / 2.0f, y + size / 2.0f, size * 0.45f, ui::Line, ui::Sheet);
+        }
+    }
+
+    void drawRows(const std::vector<Row> &rows, int focus, float y0, int visible, bool numbers = false, bool scrollable = true)
+    {
+        const float px = scrollable ? scrollPx() : 0.0f;
+        const int first = int(px / RowStep);
+        const float frac = px - first * RowStep;
+        ui::clipBegin(0.0f, y0 - 1.0f, BotW, visible * RowStep);
+        for (int i = 0; i <= visible; ++i) {
+            const int index = first + i;
+            if (index >= int(rows.size())) break;
+            const Row &r = rows[index];
+            const float y = y0 + i * RowStep - frac;
+            const bool focused = index == focus;
+            if (focused) {
+                ui::roundRect(RowX, y + 1.0f, RowW, RowH, 7.0f, ui::withAlpha(ui::BlueDeep, 0x50));
+                ui::gradientV(RowX, y, RowW, RowH, ui::BlueLight, ui::BlueDeep);
+                ui::roundCorners(RowX, y, RowW, RowH, 7.0f, ui::BottomBg, ui::BottomBg);
+            } else {
+                ui::roundRect(RowX, y, RowW, RowH, 7.0f, r.dim ? ui::withAlpha(ui::Sheet, 0x80) : ui::Sheet);
+            }
+            const u32 fg = focused ? ui::White : r.playing ? ui::BlueText : ui::Ink;
+            const u32 sub = focused ? ui::withAlpha(ui::White, 0xD8) : ui::Meta;
+            float x = RowX + 6.0f;
+            if (r.playing) {
+                ui::equaliser(x + 3.0f, y + 9.0f, player.level(), focused ? ui::White : ui::Blue, int(frame));
+                x += 18.0f;
+            } else if (numbers) {
+                ui::text(r.sub, x + 12.0f, y + 8.0f, 10.0f, sub, ui::Align::Right);
+                x += 18.0f;
+            } else if (r.album >= 0 || r.track >= 0) {
+                const art::Image *image = r.track >= 0 ? trackArt(r.track) : albumArt(r.album);
+                if (image != nullptr) {
+                    art::draw(*image, x, y + 2.0f, 22.0f, 22.0f);
+                    ui::roundCorners(x, y + 2.0f, 22.0f, 22.0f, 4.0f, focused ? ui::mix(ui::BlueLight, ui::BlueDeep, 0.1f) : ui::Sheet, focused ? ui::mix(ui::BlueLight, ui::BlueDeep, 0.9f) : ui::Sheet);
+                } else {
+                    ui::roundRect(x, y + 2.0f, 22.0f, 22.0f, 4.0f, ui::BottomBg);
+                }
+                x += 27.0f;
+            }
+            const float rightW = r.right.empty() ? 0.0f : ui::textWidth(r.right, 11.0f) + 8.0f;
+            const float titleW = RowW - (x - RowX) - rightW - 8.0f;
+            if (numbers || r.sub.empty()) {
+                if (focused) ui::marquee("row", r.title, x, y + 7.0f, 13.0f, fg, titleW, ui::Weight::Bold);
+                else ui::text(r.title, x, y + 7.0f, 13.0f, fg, ui::Align::Left, titleW, ui::Weight::Bold);
+            } else {
+                if (focused) ui::marquee("row", r.title, x, y + 2.0f, 12.0f, fg, titleW, ui::Weight::Bold);
+                else ui::text(r.title, x, y + 2.0f, 12.0f, fg, ui::Align::Left, titleW, ui::Weight::Bold);
+                ui::text(r.sub, x, y + 15.0f, 10.0f, sub, ui::Align::Left, RowW - (x - RowX) - rightW - 8.0f);
+            }
+            if (!r.right.empty()) ui::text(r.right, RowX + RowW - 8.0f, y + 8.0f, 11.0f, sub, ui::Align::Right);
+        }
+        ui::clipEnd();
+        if (int(rows.size()) > visible) {
+            // Scroll hint.
+            const float trackH = visible * RowStep - 3.0f;
+            const float thumbH = std::max(10.0f, trackH * visible / rows.size());
+            const float maxPx = float(int(rows.size()) - visible) * RowStep;
+            const float thumbY = y0 + (trackH - thumbH) * (maxPx > 0.0f ? px / maxPx : 0.0f);
+            ui::roundRect(RowX + RowW + 3.0f, thumbY, 2.0f, thumbH, 1.0f, ui::Line);
+        }
+    }
+
+    void drawBottom()
+    {
+        ui::rect(0, 0, BotW, BotH, ui::BottomBg);
+        ui::dots(0, 0, BotW, BotH);
+        switch (view) {
+        case View::Section: drawBottomSection(); break;
+        case View::Album: drawBottomAlbum(); break;
+        case View::Artist: drawBottomArtist(); break;
+        case View::NowPlaying: drawBottomNowPlaying(); break;
+        case View::Search: drawBottomSearch(); break;
+        case View::Settings: drawBottomSettings(); break;
+        case View::Visualizer: drawBottomVisualizer(); break;
+        case View::Pairing: drawBottomPairing(); break;
+        }
+        if (menuOpen) drawMenu();
+        if (dialogOpen) drawDialog();
+    }
+
+    void drawBottomSection()
+    {
+        drawBottomChrome(true);
+        switch (section) {
+        case Section::Home: {
+            const int count = int(library.albums().size());
+            if (count == 0) {
+                if (!scanning) {
+                    drawEmptyCard(Icon::Note, "No music yet", "Copy albums to " + settings.musicFolder, "then rescan from Settings.");
+                }
+                break;
+            }
+            const float px = scrollPx();
+            const int firstRow = int(px / TileStep);
+            const float frac = px - firstRow * TileStep;
+            ui::clipBegin(0.0f, GridY - 4.0f, BotW, GridRows * TileStep + 1.0f);
+            for (int r = 0; r <= GridRows; ++r) {
+                const float y = GridY + r * TileStep - frac;
+                for (int c = 0; c < GridCols; ++c) {
+                    const int index = (firstRow + r) * GridCols + c;
+                    if (index >= count) break;
+                    const float x = GridX + c * TileStep;
+                    if (index == focusHome) {
+                        // The cursor: a blue ring around the tile, like the HOME Menu.
+                        ui::roundRect(x - 4.0f, y - 4.0f, Tile + 8.0f, Tile + 8.0f, 8.0f, ui::BlueDeep);
+                        ui::roundRect(x - 2.0f, y - 2.0f, Tile + 4.0f, Tile + 4.0f, 6.0f, ui::Sheet);
+                    }
+                    drawTile(index, x, y, Tile);
+                    const core::Album &a = library.albums()[index];
+                    const bool playingHere = nowTrack >= 0 && library.tracks()[nowTrack].albumKey == a.key;
+                    if (playingHere) {
+                        // The pill sizes itself to the label.
+                        const float labelW = ui::textWidth("Playing", 9.0f, ui::Weight::Bold);
+                        const float pillW = 6.0f + 12.0f + 4.0f + labelW + 7.0f;
+                        ui::roundRect(x + 4.0f, y + Tile - 18.0f, pillW, 14.0f, 7.0f, ui::DarkPill);
+                        ui::equaliser(x + 10.0f, y + Tile - 16.0f, player.level(), ui::PillText, int(frame));
+                        ui::text("Playing", x + 4.0f + 6.0f + 12.0f + 4.0f, y + Tile - 15.5f, 9.0f, ui::PillText, ui::Align::Left, 0.0f, ui::Weight::Bold);
+                    }
+                }
+            }
+            ui::clipEnd();
+            drawSelectionStrip(focusHome);
+            break;
+        }
+        case Section::Songs: drawRows(rowsFor(Section::Songs), focusSongs, GridY, 7); break;
+        case Section::Artists: drawRows(rowsFor(Section::Artists), focusArtists, GridY, 7); break;
+        case Section::UpNext: {
+            const std::vector<Row> rows = rowsFor(Section::UpNext);
+            if (rows.empty()) {
+                drawEmptyCard(Icon::Queue, "Up next is empty", "Y on any song adds it here.");
+            } else {
+                drawRows(rows, focusUpNext, GridY, 7);
+            }
+            break;
+        }
+        case Section::Downloads:
+            drawEmptyCard(Icon::Download, "Nothing to save yet", "Saving songs from a server comes later.", "Your SD card music is already in Library.", "Needs a server");
+            break;
+        }
+    }
+
+    // The details strip for the focused album, fixed under the grid so the
+    // tiles never move when focus changes.
+    void drawSelectionStrip(int albumIndex)
+    {
+        if (albumIndex < 0 || albumIndex >= int(library.albums().size())) return;
+        const core::Album &a = library.albums()[albumIndex];
+        const float y = StripY;
+        ui::roundRect(StripX, y + 2.0f, StripW, StripH, 10.0f, ui::withAlpha(ui::BlueDeep, 0x50));
+        ui::gradientV(StripX, y, StripW, StripH, ui::BlueLight, ui::BlueDeep);
+        ui::roundCorners(StripX, y, StripW, StripH, 10.0f, ui::BottomBg, ui::BottomBg);
+        drawTile(albumIndex, StripX + 6.0f, y + 6.0f, StripH - 12.0f, ui::mix(ui::BlueLight, ui::BlueDeep, 0.1f), ui::mix(ui::BlueLight, ui::BlueDeep, 0.9f));
+        const float textX = StripX + StripH + 4.0f;
+        const float maxW = StripW - (StripH + 4.0f) - 66.0f;
+        ui::marquee("block", a.title, textX, y + 8.0f, 14.0f, ui::White, maxW, ui::Weight::Bold);
+        ui::icon(Icon::Clock, textX + 4.0f, y + 36.0f, 8.0f, ui::withAlpha(ui::White, 0xE0), ui::BlueDeep);
+        std::string meta = minutesText(a.durationSeconds) + " · " + plural(int(a.tracks.size()), "song", "songs") + " · " + (a.isPlaylist ? "Playlist" : a.artist);
+        ui::text(meta, textX + 11.0f, y + 31.0f, 10.0f, ui::White, ui::Align::Left, maxW - 11.0f, ui::Weight::Bold);
+        const float cy = y + StripH / 2.0f;
+        ui::roundButton(StripX + StripW - 50.0f, cy, 10.0f, Icon::Play, false);
+        ui::roundButton(StripX + StripW - 24.0f, cy, 10.0f, Icon::List, false);
+    }
+
+    void drawBottomAlbum()
+    {
+        drawBottomChrome(false);
+        if (albumView < 0) return;
+        const core::Album &a = library.albums()[albumView];
+        ui::roundRect(10.0f, 10.0f, 300.0f, 42.0f, 8.0f, ui::withAlpha(ui::ShadowBase, 0x14));
+        ui::roundRect(10.0f, 8.0f, 300.0f, 42.0f, 8.0f, ui::Sheet);
+        drawTile(albumView, 16.0f, 14.0f, 30.0f, ui::Sheet);
+        ui::text(a.title, 52.0f, 12.0f, 13.0f, ui::Ink, ui::Align::Left, 150.0f, ui::Weight::Bold);
+        ui::text((a.isPlaylist ? "Playlist" : a.artist) + (a.year.empty() ? "" : " · " + a.year), 52.0f, 29.0f, 9.0f, ui::Meta, ui::Align::Left, 150.0f);
+        ui::roundButton(269.0f, 29.0f, 9.0f, Icon::Shuffle, false);
+        ui::roundButton(297.0f, 29.0f, 11.0f, Icon::Play, true);
+        drawRows(albumRows(albumView), focusAlbum, 56.0f, 6, true);
+    }
+
+    void drawBottomArtist()
+    {
+        drawBottomChrome(false);
+        ui::roundRect(10.0f, 10.0f, 300.0f, 42.0f, 8.0f, ui::withAlpha(ui::ShadowBase, 0x14));
+        ui::roundRect(10.0f, 8.0f, 300.0f, 42.0f, 8.0f, ui::Sheet);
+        ui::circle(31.0f, 29.0f, 15.0f, ui::BottomBg);
+        ui::icon(Icon::Person, 31.0f, 29.0f, 16.0f, ui::Meta, ui::BottomBg);
+        ui::text(artistView, 52.0f, 12.0f, 13.0f, ui::Ink, ui::Align::Left, 180.0f, ui::Weight::Bold);
+        int songs = 0;
+        for (int i : artistAlbums) songs += int(library.albums()[i].tracks.size());
+        ui::text(plural(int(artistAlbums.size()), "album", "albums") + " · " + plural(songs, "song", "songs"), 52.0f, 29.0f, 9.0f, ui::Meta);
+        drawRows(artistRows(), focusArtist, 56.0f, 6);
+    }
+
+    void drawMiniPlayer(float y)
+    {
+        ui::roundRect(10.0f, y + 2.0f, 300.0f, 42.0f, 8.0f, ui::withAlpha(ui::ShadowBase, 0x14));
+        ui::roundRect(10.0f, y, 300.0f, 42.0f, 8.0f, ui::Sheet);
+        if (nowTrack < 0) {
+            ui::roundRect(16.0f, y + 7.0f, 28.0f, 28.0f, 5.0f, ui::BottomBg);
+            ui::icon(Icon::Note, 30.0f, y + 21.0f, 14.0f, ui::Line, ui::BottomBg);
+            ui::text("Nothing playing", 50.0f, y + 7.0f, 12.0f, ui::Ink, ui::Align::Left, 0.0f, ui::Weight::Bold);
+            ui::text("Pick something from Library", 50.0f, y + 23.0f, 9.0f, ui::Meta);
+            return;
+        }
+        const core::Track &t = library.tracks()[nowTrack];
+        drawTrackTile(nowTrack, 16.0f, y + 7.0f, 28.0f, ui::Sheet);
+        ui::marquee("mini", t.title, 50.0f, y + 4.0f, 12.0f, ui::Ink, 200.0f, ui::Weight::Bold);
+        ui::text(t.artist + " · " + t.album, 50.0f, y + 19.0f, 9.0f, ui::Meta, ui::Align::Left, 200.0f);
+        const float pos = float(player.positionSeconds());
+        ui::progressBar(50.0f, y + 31.0f, 200.0f, 4.0f, t.durationSeconds > 0 ? pos / t.durationSeconds : 0.0f);
+        ui::text(core::formatClock(int(pos)), 304.0f, y + 9.0f, 10.0f, ui::Meta, ui::Align::Right);
+        ui::text(t.durationSeconds > 0 ? core::formatClock(t.durationSeconds) : "", 304.0f, y + 21.0f, 10.0f, ui::InkFaint, ui::Align::Right);
+    }
+
+    void drawBottomNowPlaying()
+    {
+        drawBottomChrome(true);
+        drawMiniPlayer(33.0f);
+        const bool playing = player.playing();
+        ui::roundButton(96.0f, 100.0f, 9.0f, Icon::Shuffle, false, focusNow == 0);
+        if (settings.shuffle) ui::circle(96.0f, 112.0f, 1.5f, ui::Blue);
+        ui::roundButton(128.0f, 100.0f, 12.0f, Icon::Prev, false, focusNow == 1);
+        ui::roundButton(160.0f, 100.0f, 16.0f, playing ? Icon::Pause : Icon::Play, true, focusNow == 2);
+        ui::roundButton(192.0f, 100.0f, 12.0f, Icon::Next, false, focusNow == 3);
+        ui::roundButton(224.0f, 100.0f, 9.0f, settings.repeat == 2 ? Icon::RepeatOne : Icon::Repeat, false, focusNow == 4);
+        if (settings.repeat != 0) ui::circle(224.0f, 112.0f, 1.5f, ui::Blue);
+        const std::vector<const core::Item *> upcoming = queue.upcoming();
+        if (upcoming.size() > 1) {
+            ui::text("Up next · " + plural(int(upcoming.size()) - 1, "song", "songs"), 14.0f, 128.0f, 9.0f, ui::Meta);
+            std::vector<Row> rows;
+            for (size_t i = 1; i < upcoming.size() && rows.size() < 3; ++i) {
+                Row r;
+                r.title = upcoming[i]->title;
+                r.sub = upcoming[i]->artist;
+                r.right = upcoming[i]->durationSeconds > 0 ? core::formatClock(upcoming[i]->durationSeconds) : "";
+                r.album = albumIndexOfTrack(upcoming[i]->libraryIndex);
+                r.track = upcoming[i]->libraryIndex;
+                rows.push_back(r);
+            }
+            drawRows(rows, focusNowQueue - 1, 143.0f, 3, false, false);
+        } else {
+            ui::text("Nothing queued after this song.", 14.0f, 128.0f, 9.0f, ui::Meta);
+        }
+    }
+
+    void drawBottomSearch()
+    {
+        ui::roundRect(10.0f, 10.0f, 300.0f, 24.0f, 12.0f, ui::withAlpha(ui::BlueDeep, 0x60));
+        ui::roundRect(11.5f, 11.5f, 297.0f, 21.0f, 10.5f, ui::Sheet);
+        ui::icon(Icon::Search, 26.0f, 22.0f, 10.0f, ui::Meta, ui::Sheet);
+        if (searchQuery.empty()) ui::text("Song, artist or album", 38.0f, 17.0f, 9.0f, ui::Meta);
+        else ui::text(searchQuery, 38.0f, 17.0f, 11.0f, ui::Ink, ui::Align::Left, 230.0f);
+        ui::icon(Icon::Keyboard, 296.0f, 22.0f, 11.0f, ui::Meta, ui::Sheet);
+        if (!searchResults.empty()) {
+            drawRows(searchRows(), focusSearch, 42.0f, 6);
+        } else if (!searchQuery.empty()) {
+            ui::text("No matches for \"" + searchQuery + "\"", 160.0f, 120.0f, 11.0f, ui::Meta, ui::Align::Center);
+        }
+    }
+
+    void drawBottomSettings()
+    {
+        const std::vector<SettingRow> rows = settingRows();
+        float totalH = 4.0f;
+        for (const SettingRow &r : rows) totalH += (r.header ? 12.0f : 18.0f) + 1.0f;
+        ui::roundRect(10.0f, 10.0f, 300.0f, totalH, 8.0f, ui::withAlpha(ui::ShadowBase, 0x14));
+        ui::roundRect(10.0f, 8.0f, 300.0f, totalH, 8.0f, ui::Sheet);
+        float y = 12.0f;
+        for (int i = 0; i < int(rows.size()); ++i) {
+            const SettingRow &r = rows[i];
+            if (r.header) {
+                ui::text(r.label, 18.0f, y + 2.0f, 9.0f, ui::Meta);
+                y += 13.0f;
+                continue;
+            }
+            const bool focused = i == focusSettings;
+            if (focused) ui::roundRect(14.0f, y, 292.0f, 18.0f, 5.0f, ui::BlueTint);
+            const u32 fg = !r.enabled ? ui::Meta : focused ? ui::BlueText : ui::Ink;
+            ui::text(r.label, 20.0f, y + 4.0f, 11.0f, fg, ui::Align::Left, 190.0f);
+            if (r.toggle >= 0) {
+                ui::toggle(280.0f, y + 3.5f, r.toggle == 1);
+            } else {
+                if (!r.value.empty()) ui::text(r.value, 288.0f, y + 5.0f, 9.0f, focused ? ui::BlueText : ui::Meta, ui::Align::Right, 100.0f);
+                if (r.enabled) ui::icon(Icon::ChevronRight, 298.0f, y + 9.0f, 8.0f, focused ? ui::BlueText : ui::Meta, ui::Sheet);
+            }
+            y += 19.0f;
+        }
+    }
+
+    void drawBottomVisualizer()
+    {
+        const float dimAmount = visualizerDim > 300 ? std::min(1.0f, (visualizerDim - 300) / 120.0f) : 0.0f;
+        ui::rect(0, 0, BotW, BotH, ui::withAlpha(ui::ShadowBase, 0x80));
+        static const char *names[4] = {"Bars", "Wave", "Dots", "Art only"};
+        ui::roundRect(30.0f, 72.0f, 260.0f, 28.0f, 8.0f, ui::Sheet);
+        for (int i = 0; i < 4; ++i) {
+            const float x = 34.0f + i * 63.0f;
+            if (settings.visualizerStyle == i) ui::roundRect(x, 76.0f, 61.0f, 20.0f, 5.0f, ui::BlueTint);
+            ui::text(names[i], x + 30.5f, 81.0f, 10.0f, settings.visualizerStyle == i ? ui::BlueText : ui::Ink, ui::Align::Center);
+        }
+        drawMiniPlayerAt(30.0f, 108.0f, 260.0f);
+        ui::roundButton(160.0f, 164.0f, 14.0f, player.playing() ? Icon::Pause : Icon::Play, true);
+        ui::text("Screen dims after a while", 160.0f, 222.0f, 9.0f, ui::withAlpha(ui::White, 0xA0), ui::Align::Center);
+        if (dimAmount > 0.0f) ui::rect(0, 0, BotW, BotH, ui::withAlpha(C2D_Color32(0, 0, 0, 0xFF), u8(0xE6 * dimAmount)));
+    }
+
+    void drawMiniPlayerAt(float x, float y, float w)
+    {
+        ui::roundRect(x, y, w, 32.0f, 8.0f, ui::Sheet);
+        if (nowTrack < 0) {
+            ui::text("Nothing playing", x + 12.0f, y + 10.0f, 11.0f, ui::Meta);
+            return;
+        }
+        const core::Track &t = library.tracks()[nowTrack];
+        drawTrackTile(nowTrack, x + 6.0f, y + 5.0f, 22.0f, ui::Sheet);
+        ui::text(t.title, x + 34.0f, y + 3.0f, 11.0f, ui::Ink, ui::Align::Left, w - 46.0f, ui::Weight::Bold);
+        ui::text(t.artist, x + 34.0f, y + 16.0f, 9.0f, ui::Meta, ui::Align::Left, w - 46.0f);
+        const float pos = float(player.positionSeconds());
+        ui::progressBar(x + 34.0f, y + 26.0f, w - 46.0f, 3.0f, t.durationSeconds > 0 ? pos / t.durationSeconds : 0.0f);
+    }
+
+    void drawBottomPairing()
+    {
+        ui::rect(0, 0, BotW, BotH, C2D_Color32(0x1A, 0x1D, 0x22, 0xFF));
+        const float cx = 160.0f;
+        const float cy = 96.0f;
+        const float h = 55.0f;
+        for (int i = 0; i < 4; ++i) {
+            const float sx = i % 2 == 0 ? cx - h : cx + h;
+            const float sy = i < 2 ? cy - h : cy + h;
+            const float dx = i % 2 == 0 ? 1.0f : -1.0f;
+            const float dy = i < 2 ? 1.0f : -1.0f;
+            ui::rect(sx - (dx < 0 ? 2.5f : 0.0f), sy - (dy < 0 ? 2.5f : 0.0f), dx > 0 ? 20.0f : 2.5f, dy > 0 ? 20.0f : 2.5f, ui::White);
+            ui::rect(sx - (dx < 0 ? 20.0f : 0.0f), sy - (dy < 0 ? 2.5f : 0.0f), 20.0f, 2.5f, ui::White);
+            ui::rect(sx - (dx < 0 ? 2.5f : 0.0f), sy - (dy < 0 ? 20.0f : 0.0f), 2.5f, 20.0f, ui::White);
+        }
+        ui::text("The camera opens here once pairing exists", cx, 170.0f, 9.0f, ui::withAlpha(ui::White, 0xB0), ui::Align::Center);
+        ui::roundRect(10.0f, 212.0f, 300.0f, 24.0f, 8.0f, ui::Sheet);
+        ui::icon(Icon::Keyboard, 24.0f, 224.0f, 11.0f, ui::Meta, ui::Sheet);
+        ui::text("Type the server address instead", 36.0f, 218.0f, 11.0f, ui::Ink, ui::Align::Left, 0.0f, ui::Weight::Bold);
+        ui::tag("Soon", 268.0f, 218.0f, ui::Line, ui::Meta);
+    }
+
+    void drawMenu()
+    {
+        ui::rect(0, 0, BotW, BotH, ui::Dim);
+        const int count = int(menu.size());
+        const float h = 8.0f + count * RowStep;
+        ui::roundRect(48.0f, 32.0f, 150.0f, h, 8.0f, ui::withAlpha(ui::ShadowBase, 0x30));
+        ui::roundRect(48.0f, 30.0f, 150.0f, h, 8.0f, ui::Sheet);
+        for (int i = 0; i < count; ++i) {
+            const float y = 34.0f + i * RowStep;
+            const bool focused = i == menuFocus;
+            if (focused) ui::roundRect(52.0f, y, 142.0f, RowH, 5.0f, ui::BlueTint);
+            const u32 fg = !menu[i].enabled ? ui::Meta : focused ? ui::BlueText : ui::Ink;
+            ui::text(menu[i].label, 58.0f, y + 7.0f, 12.0f, fg, ui::Align::Left, 110.0f);
+            ui::icon(menu[i].icon, 183.0f, y + 13.0f, 10.0f, focused ? ui::BlueText : ui::Meta, focused ? ui::BlueTint : ui::Sheet);
+        }
+        ui::roundButton(217.0f, 41.0f, 9.0f, Icon::Close, true);
+    }
+
+    void drawDialog()
+    {
+        ui::rect(0, 0, BotW, BotH, ui::Dim);
+        ui::roundRect(30.0f, 62.0f, 260.0f, 116.0f, 8.0f, ui::withAlpha(ui::ShadowBase, 0x30));
+        ui::roundRect(30.0f, 60.0f, 260.0f, 116.0f, 8.0f, ui::Sheet);
+        ui::text(dialogTitle, 42.0f, 70.0f, 14.0f, ui::Ink, ui::Align::Left, 236.0f, ui::Weight::Bold);
+        // Wrap body.
+        std::string line;
+        std::string word;
+        float y = 90.0f;
+        for (size_t i = 0; i <= dialogBody.size(); ++i) {
+            const char c = i < dialogBody.size() ? dialogBody[i] : ' ';
+            if (c == ' ') {
+                const std::string candidate = line.empty() ? word : line + " " + word;
+                if (ui::textWidth(candidate, 10.0f) > 236.0f && !line.empty()) {
+                    ui::text(line, 42.0f, y, 10.0f, ui::InkSoft);
+                    y += 11.0f;
+                    line = word;
+                } else {
+                    line = candidate;
+                }
+                word.clear();
+            } else {
+                word += c;
+            }
+        }
+        if (!line.empty()) ui::text(line, 42.0f, y, 10.0f, ui::InkSoft);
+        ui::roundRect(170.0f, 150.0f, 70.0f, 20.0f, 5.0f, ui::BottomBg);
+        ui::text(dialogSecondary, 205.0f, 156.0f, 10.0f, ui::Ink, ui::Align::Center);
+        ui::roundRect(246.0f, 150.0f, 64.0f, 20.0f, 5.0f, ui::ButtonDark);
+        ui::text(dialogPrimary, 278.0f, 156.0f, 10.0f, ui::ButtonDarkIcon, ui::Align::Center);
+        ui::keyCap("B", 180.0f, 160.0f, ui::Meta);
+        ui::keyCap("A", 256.0f, 160.0f, ui::Meta);
+    }
+
+    // ---- lid handling ----
+    void updateLid()
+    {
+        if (frame % 15 != 0) return;
+        // While music plays the console must not sleep when the lid closes;
+        // the screens go dark instead and come back when it opens.
+        const bool keepAwake = settings.keepPlayingLidClosed && player.playing();
+        aptSetSleepAllowed(!keepAwake);
+        if (keepAwake) {
+            platform::setBacklights(!platform::lidClosed());
+        } else {
+            platform::setBacklights(true);
+        }
+    }
+};
+
+App::App() : s_(new State)
+{
+    s_->settings.load();
+    ui::setTheme(s_->settings.darkMode);
+    s_->audioReady = audio::init(s_->audioError);
+    if (!s_->audioReady) platform::log("audio: %s", s_->audioError.c_str());
+    s_->applyQueueModes();
+    art::startLoader();
+    s_->refreshStatus();
+    s_->startScan();
+}
+
+App::~App()
+{
+    s_->player.stop();
+    s_->finishScanThread();
+    art::stopLoader();
+    for (auto &entry : s_->art) art::release(entry.second);
+    audio::shutdown();
+    delete s_;
+}
+
+void App::run()
+{
+    C3D_RenderTarget *top = C2D_CreateScreenTarget(GFX_TOP, GFX_LEFT);
+    C3D_RenderTarget *bottom = C2D_CreateScreenTarget(GFX_BOTTOM, GFX_LEFT);
+    // Frame timing, logged a few times at ten-second intervals, to catch
+    // anything that drags. The "top" figure includes the vsync wait.
+    u64 tUpdate = 0;
+    u64 tTop = 0;
+    u64 tBottom = 0;
+    u64 tEnd = 0;
+    u64 tWait = 0;
+    int timed = 0;
+    int timingLogs = 0;
+    u64 last = svcGetSystemTick();
+    u64 hostLast = osGetTime();
+    while (aptMainLoop()) {
+        const u64 t0 = svcGetSystemTick();
+        tWait += t0 - last;
+        s_->update();
+        if (hidKeysDown() & KEY_START && (hidKeysHeld() & KEY_SELECT)) break;
+        s_->updateLid();
+        const u64 t1 = svcGetSystemTick();
+
+        C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
+        ui::beginFrame();
+        ui::marqueeTick();
+        C2D_TargetClear(top, ui::TopBg);
+        C2D_SceneBegin(top);
+        ui::beginScreen(TopW, TopH);
+        s_->drawTop();
+        const u64 t2 = svcGetSystemTick();
+        C2D_TargetClear(bottom, ui::BottomBg);
+        C2D_SceneBegin(bottom);
+        ui::beginScreen(BotW, BotH);
+        s_->drawBottom();
+        const u64 t3 = svcGetSystemTick();
+        C3D_FrameEnd(0);
+        const u64 t4 = svcGetSystemTick();
+        last = t4;
+        tUpdate += t1 - t0;
+        tTop += t2 - t1;
+        tBottom += t3 - t2;
+        tEnd += t4 - t3;
+        if (++timed == 600 && timingLogs < 6) {
+            ++timingLogs;
+            const double ms = 1000.0 / double(SYSCLOCK_ARM11) / 600.0;
+            platform::log("frame ms: update %.2f top %.2f bottom %.2f end %.2f wait %.2f | host ms per frame %.1f", tUpdate * ms, tTop * ms, tBottom * ms, tEnd * ms, tWait * ms, double(osGetTime() - hostLast) / 600.0);
+            hostLast = osGetTime();
+            tUpdate = tTop = tBottom = tEnd = tWait = 0;
+            timed = 0;
+        }
+    }
+}
