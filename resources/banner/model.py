@@ -229,41 +229,41 @@ def disc(radius, segments=32):
 
 def record():
     """The vinyl: a thick dark disc."""
-    return merge((extrude(disc(5.6, 28), 0.9, 0.22), (0.0, 0.0, 0.0)))
+    return merge((extrude(disc(5.6, 20), 0.9, 0.22), (0.0, 0.0, 0.0)))
 
 
 def groove():
     """A lighter thin disc under a dark one reads as a groove ring; rings as
     single polygons would fold under the bevel inset."""
-    return merge((extrude(disc(4.75, 16), 0.12, 0.03), (0.0, 0.0, 0.49)))
+    return merge((extrude(disc(4.75, 12), 0.12, 0.03), (0.0, 0.0, 0.49)))
 
 
 def groove_fill():
-    return merge((extrude(disc(4.45, 16), 0.12, 0.03), (0.0, 0.0, 0.53)))
+    return merge((extrude(disc(4.45, 12), 0.12, 0.03), (0.0, 0.0, 0.53)))
 
 
 def label():
-    return merge((extrude(disc(2.3, 16), 0.3, 0.1), (0.0, 0.0, 0.62)))
+    return merge((extrude(disc(2.3, 12), 0.3, 0.1), (0.0, 0.0, 0.62)))
 
 
 def label_ring():
-    return merge((extrude(disc(1.55, 10), 0.12, 0.03), (0.0, 0.0, 0.82)))
+    return merge((extrude(disc(1.55, 8), 0.12, 0.03), (0.0, 0.0, 0.82)))
 
 
 def label_fill():
-    return merge((extrude(disc(1.3, 10), 0.12, 0.03), (0.0, 0.0, 0.86)))
+    return merge((extrude(disc(1.3, 8), 0.12, 0.03), (0.0, 0.0, 0.86)))
 
 
 def spindle():
-    return merge((extrude(disc(0.34, 8), 0.5, 0.1), (0.0, 0.0, 0.95)))
+    return merge((extrude(disc(0.34, 6), 0.5, 0.1), (0.0, 0.0, 0.95)))
 
 
 def arm():
     """The tonearm, built around its pivot at the origin: a round base, the
     arm reaching down-left to the needle, and the head."""
-    base = extrude(disc(1.25, 12), 1.2, 0.3)
+    base = extrude(disc(1.25, 8), 1.2, 0.3)
     shaft = rounded([(-0.5, -7.4), (0.5, -7.4), (0.5, 0.6), (-0.5, 0.6)], 0.3, 1)
-    head = rounded([(-1.1, -9.2), (1.1, -9.2), (1.1, -7.0), (-1.1, -7.0)], 0.45, 2)
+    head = rounded([(-1.1, -9.2), (1.1, -9.2), (1.1, -7.0), (-1.1, -7.0)], 0.45, 1)
     needle = rounded([(-0.2, -9.9), (0.2, -9.9), (0.2, -9.0), (-0.2, -9.0)], 0.12, 1)
     return merge(
         (base, (0.0, 0.0, 0.3)),
@@ -275,13 +275,13 @@ def arm():
 
 def note():
     """An eighth note: head, stem and a flag, as one solid."""
-    head = [(0.95 * math.cos(a) - 0.0, 0.62 * math.sin(a) - 0.0) for a in [2 * math.pi * k / 8 + 0.5 for k in range(8)]]
+    head = [(0.95 * math.cos(a) - 0.0, 0.62 * math.sin(a) - 0.0) for a in [2 * math.pi * k / 6 + 0.5 for k in range(6)]]
     stem = rounded([(0.55, -0.1), (1.05, -0.1), (1.05, 3.2), (0.55, 3.2)], 0.22, 2)
-    flag = rounded([(0.75, 3.2), (1.35, 3.2), (2.55, 1.9), (2.55, 1.0), (1.3, 2.25), (0.75, 2.4)], [0.18, 0.3, 0.3, 0.4, 0.3, 0.2], 2)
+    flag = rounded([(0.75, 3.2), (1.35, 3.2), (2.55, 1.9), (2.55, 1.0), (1.3, 2.25), (0.75, 2.4)], [0.18, 0.3, 0.3, 0.4, 0.3, 0.2], 1)
     return merge(
         (extrude(head, 0.6, 0.16), (0.0, 0.0, 0.0)),
-        (extrude(stem, 0.5, 0.14), (0.0, 0.0, 0.0)),
-        (extrude(flag, 0.5, 0.14), (0.0, 0.0, 0.0)),
+        (extrude(stem, 0.5, 0.08), (0.0, 0.0, 0.0)),
+        (extrude(flag, 0.5, 0.08), (0.0, 0.0, 0.0)),
     )
 
 
@@ -323,9 +323,10 @@ def wave(t, period=LOOP, phase=0.0):
 
 
 def record_tracks():
-    """Sways from side to side, spins two turns per loop, and squashes
-    happily when the needle lands."""
-    rotation = sampled(lambda t: euler_quat(math.radians(-8), math.radians(16) * wave(t), math.radians(360.0 * t / 2.0)), 0.05)
+    """Spins two turns per loop, bobs, and squashes happily when the
+    needle lands. The sway is the rig's, so this rotation is a plain spin
+    about one axis, keyed every 0.1 s like every other track."""
+    rotation = sampled(lambda t: euler_quat(0, 0, math.radians(360.0 * t / 2.0)))
     scale = [
         (0.0, (1, 1, 1)), (0.7, (1, 1, 1)), (0.8, (1.07, 0.92, 1.07)), (0.95, (0.95, 1.06, 0.95)),
         (1.1, (1.02, 0.98, 1.02)), (1.25, (1, 1, 1)), (LOOP, (1, 1, 1)),
@@ -487,6 +488,10 @@ class Gltf:
         return index
 
     def animate(self, node, translation=None, rotation=None, scale=None):
+        # An animated bone starts from the identity: static placement goes on
+        # an unanimated parent. Every animated bone in the banner that works
+        # on a console is built this way.
+        assert not ({"translation", "rotation", "scale"} & set(self.doc["nodes"][node])), self.doc["nodes"][node]["name"]
         for path, keys, kind in (("translation", translation, "VEC3"), ("rotation", rotation, "VEC4"), ("scale", scale, "VEC3")):
             if not keys:
                 continue
@@ -529,7 +534,11 @@ def build(logo_png, out_path, static=None):
 
     # The record spins inside a rig that only sways, so the tilt is a tilt
     # and the spin is a spin.
-    rig = g.node("RecordRig", parent=root, translation=(-9.6, -1.4, -1.0), scale=(1.25, 1.25, 1.25))
+    # Placement and size live on an unanimated bone; the animated bones
+    # below it start from the identity, like every animated bone in the
+    # 3dsDL banner that works on a console.
+    mount = g.node("RecordMount", parent=root, translation=(-9.6, -1.4, -1.0), scale=(1.25, 1.25, 1.25))
+    rig = g.node("RecordRig", parent=mount)
     g.animate(rig, *rig_tracks())
     rec = g.node("Record", parent=rig)
     g.node("RecordBody", g.mesh("RecordBody", record(), vinyl), parent=rec)
@@ -543,8 +552,9 @@ def build(logo_png, out_path, static=None):
     g.animate(rec, translation, rotation, scale)
 
     # The tonearm pivots at the record's upper right, in front of it.
-    pivot = g.node("Arm", g.mesh("Arm", arm(), arm_mat), parent=rig, translation=(6.6, 5.4, 1.4))
-    g.animate(pivot, *arm_track())
+    pivot = g.node("ArmPivot", parent=rig, translation=(6.6, 5.4, 1.4))
+    tonearm = g.node("Arm", g.mesh("Arm", arm(), arm_mat), parent=pivot)
+    g.animate(tonearm, *arm_track())
 
     # Notes burst out from under the needle (about (2.0, -2.8) in rig
     # units) and float off in three directions.

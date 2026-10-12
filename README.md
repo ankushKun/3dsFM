@@ -1,14 +1,130 @@
-# 3dsFM
+<p align="center">
+  <img src="resources/banner-3dsfm-source.png" width="640" alt="3dsFM: a record, a tonearm and the 3dsFM wordmark">
+</p>
 
-**Your music, in stereo, on the Nintendo 3DS.**
+<p align="center">
+  <b>Your music, in stereo, on the Nintendo 3DS.</b><br>
+  Copy albums to the SD card, close the lid, keep listening.
+</p>
 
-A music player for the 3DS that streams from a small self-hosted backend, keeps songs on the SD card for offline listening, and plays on with the lid closed. Built on the same toolchain as [3dsDL](https://github.com/ankushKun/3dsDL) with a Citro2D interface designed to feel like it shipped with the console.
+<p align="center">
+  <img alt="Version 0.2.1" src="https://img.shields.io/badge/version-0.2.1-3a96eb?style=for-the-badge">
+  <img alt="Nintendo 3DS" src="https://img.shields.io/badge/platform-Nintendo%203DS-e60012?style=for-the-badge">
+  <img alt="GPLv3 license" src="https://img.shields.io/badge/license-GPLv3-56e39f?style=for-the-badge">
+  <img alt="Active development" src="https://img.shields.io/badge/status-in%20development-ffc857?style=for-the-badge">
+</p>
 
-Website: https://ankush.one/3dsFM/
+<p align="center">
+  <a href="https://ankush.one/3dsFM/"><b>Website</b></a> &nbsp;•&nbsp;
+  <a href="#-features">Features</a> &nbsp;•&nbsp;
+  <a href="#-install">Install</a> &nbsp;•&nbsp;
+  <a href="#-using-3dsfm">Usage</a> &nbsp;•&nbsp;
+  <a href="#%EF%B8%8F-building">Build</a> &nbsp;•&nbsp;
+  <a href="#-testing">Tests</a> &nbsp;•&nbsp;
+  <a href="#%EF%B8%8F-roadmap">Roadmap</a> &nbsp;•&nbsp;
+  <a href="#-credits">Credits</a>
+</p>
 
-> **Status:** plays music from the SD card. Put albums under `sdmc:/Music` and 3dsFM finds them, reads their tags and cover art, and plays MP3, Ogg Vorbis, Opus and WAV with the lid open or closed. Streaming from a server, saving songs and pairing have their screens in place but are switched off until the server exists. See [docs/DESIGN.md](docs/DESIGN.md) for the design system and [docs/PLAN.md](docs/PLAN.md) for what comes next.
+<br>
 
-## Using it
+The 3DS has stereo speakers, a headphone jack, a clamshell that protects the screens in a bag, and a battery that lasts for days when the screens are off. It never had a music player worth using. 3dsFM is one: a Citro2D interface designed to feel like it shipped with the console, a library read from the SD card with tags and cover art, and playback that keeps going when you close the lid.
+
+It shares its toolchain, container build and release pipeline with [3dsDL](https://github.com/ankushKun/3dsDL), the 3DS downloader.
+
+> [!IMPORTANT]
+> Version 0.2.1 is a development build. Playback from the SD card works in the Azahar emulator and is being checked on a console; the tag reader, library scanner and play queue are covered by automated tests. Streaming from a server, saving songs and pairing have their screens in place but stay switched off until the server exists. The plan is in [docs/PLAN.md](docs/PLAN.md).
+
+## ✨ Features
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <h4>📂 Albums from folders</h4>
+      Drop albums under <code>sdmc:/Music</code>, one folder each. Tags come from ID3v1 and ID3v2, Vorbis comments and WAV INFO chunks; untagged files take their title from the file name and their album and artist from the folders.
+    </td>
+    <td width="50%" valign="top">
+      <h4>🎧 Four formats</h4>
+      MP3, Ogg Vorbis, Opus and WAV, decoded on the second core and mixed by the console's DSP, so the interface never skips while the music plays.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <h4>🖼️ Cover art everywhere</h4>
+      A <code>cover</code>, <code>folder</code>, <code>front</code> or <code>album</code> image in the folder, or the first track's embedded picture. Playlists of mixed artists get a 2 × 2 mosaic. The focused album fogs into the top screen.
+    </td>
+    <td valign="top">
+      <h4>🌙 Lid closed, music on</h4>
+      Close the lid and the screens turn off while the song keeps playing, like the console's own sound app. Open it and everything comes back where it was.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <h4>🎚️ Queue, shuffle, repeat</h4>
+      An Up next list you can reorder and trim, shuffle and repeat that are remembered between launches, and previous and next on <kbd>L</kbd> and <kbd>R</kbd> from any screen.
+    </td>
+    <td valign="top">
+      <h4>🔍 Search and browse</h4>
+      Home, Songs, Artists and Up next sections, album and artist pages, and a search that matches titles, artists and albums as you type.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <h4>🌊 Visualizer</h4>
+      Bars, a waveform, dots or just the art, driven by the samples the DSP is playing, on <kbd>SELECT</kbd>.
+    </td>
+    <td valign="top">
+      <h4>🌗 Two looks</h4>
+      A dark theme and a white HOME Menu look, with one selection blue shared by both, drawn with the bundled M PLUS Rounded font so text looks the same on a console and in an emulator.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <h4>🎮 Buttons or touch</h4>
+      D-Pad, Circle Pad and buttons everywhere, or tap on the bottom screen: one tap selects, a second opens. Lists drag and flick.
+    </td>
+    <td valign="top">
+      <h4>🧪 Tested off the console</h4>
+      The tag reader, library scanner, play queue and time formatting run as host tests under AddressSanitizer and UBSan on every push.
+    </td>
+  </tr>
+</table>
+
+## 🔄 How it works
+
+```mermaid
+flowchart LR
+    A["📂 sdmc:/Music<br>folders of songs"] --> B["Scan on a<br>background thread"]
+    B --> C["Tags, durations<br>and cover art"]
+    C --> D["Albums, artists,<br>playlists"]
+    D --> E["▶️ Play queue"]
+    E --> F["Decoder on<br>the second core"]
+    F --> G["🔊 NDSP, stereo"]
+    E -. "lid closed" .-> H["Screens off,<br>music on"]
+```
+
+## 📦 Install
+
+**You'll need**
+
+- A Nintendo 3DS that can run homebrew
+- The console's DSP firmware dumped once with [DSP1](https://github.com/zoogie/DSP1) to `sdmc:/3ds/dspfirm.cdc` (most homebrew setups already have it)
+- `3dsFM.3dsx` or `3dsFM.cia` from the [releases page](https://github.com/ankushKun/3dsFM/releases), or your own build (see [Building](#%EF%B8%8F-building))
+
+The [website](https://ankush.one/3dsFM/) has QR codes that install the latest release straight from FBI.
+
+**Homebrew Launcher (.3dsx)**
+
+Copy the executable to this path on the SD card and launch **3dsFM** from the Homebrew Launcher:
+
+```text
+sdmc:/3ds/3dsFM/3dsFM.3dsx
+```
+
+**HOME Menu (.cia)**
+
+Install `3dsFM.cia` with FBI to launch it from the HOME Menu, with the animated 3D banner and jingle. The CIA uses the stable Title ID `0004000003D5F100`, so newer builds upgrade the installed title instead of adding a duplicate.
+
+## 🎵 Using 3dsFM
 
 Copy music to the SD card as folders, one album per folder, with the artist as the folder above it if you like:
 
@@ -17,88 +133,230 @@ sdmc:/Music/Miki Matsubara/Pocket Park/01 - Mayonaka no Door.mp3
 sdmc:/Music/Miki Matsubara/Pocket Park/cover.jpg
 ```
 
-Tags are read from ID3v1 and ID3v2 (MP3), Vorbis comments (Ogg, Opus) and the INFO chunk (WAV). Untagged files take their title from the file name and their album and artist from the folders. Cover art comes from `cover`, `folder`, `front` or `album` image files in the folder, or from the first track with embedded art.
+A folder whose songs have different artists is shown as a playlist with a mosaic of its covers. Launch 3dsFM and it scans the folder; after copying new music, pick **Rescan the Music folder** in Settings.
 
-| Input | Action |
+1. The bottom screen opens on **Home**, the albums. Tabs along the bottom switch to **Songs**, **Artists**, **Up next** and **Downloads**; the round buttons open **Search**, **Now Playing** and **Settings**.
+2. Pick an album, then a song. The top screen shows what is playing, with the art fogged behind it.
+3. Press <kbd>Y</kbd> on a song or album to play it now, add it to Up next, shuffle the album or jump to its artist.
+4. Close the lid. The music keeps playing until the song list ends or you open it again.
+
+### Controls
+
+| Where | Input | What it does |
+| --- | --- | --- |
+| Everywhere | D-Pad, Circle Pad or touch | Move the focus, or tap once to select and again to open |
+| Everywhere | <kbd>A</kbd> / <kbd>B</kbd> | Open, play or pause / go back |
+| Everywhere | <kbd>L</kbd> / <kbd>R</kbd> | Previous and next song |
+| Everywhere | <kbd>START</kbd> | Play or pause; with <kbd>SELECT</kbd> held, quit |
+| Everywhere | <kbd>SELECT</kbd> | Visualizer |
+| Songs and albums | <kbd>Y</kbd> | Menu: play now, add to up next, shuffle the album, go to the album or artist |
+| Songs and albums | <kbd>X</kbd> | Save to the SD card (needs a paired server, so it only shows a notice for now) |
+| Lists | Drag or flick | Scroll |
+| Now Playing | Touch the bar | Seek |
+
+### Settings
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| Keep playing with the lid closed | On | Closing the lid turns the screens off and keeps the music going. Off pauses, like other homebrew. |
+| Dark mode | On | Dark screens with light text. Off gives the white HOME Menu look. |
+| Album art on the top screen | On | Fogs the focused album's art into the top screen. Off saves some battery on an Old 3DS. |
+| Music folder | `sdmc:/Music` | Where 3dsFM looks for albums. Typed with the console keyboard. |
+| Rescan the Music folder | | Reads the folder again after you copy music to the card. |
+| Paired server, Stream quality, Prefer saved copies | | Shown, but switched off until the server exists. |
+
+Shuffle, repeat and the visualizer style are set from Now Playing and remembered too.
+
+### Files on the SD card
+
+| Path | Contents |
 | --- | --- |
-| Circle Pad / D-pad | Move focus |
-| A | Open, play, pause |
-| B | Back |
-| X | Save to SD card (needs a server, shows a notice) |
-| Y | Menu for the focused song or album |
-| L / R | Previous and next song, from any screen |
-| START | Play or pause from anywhere; with SELECT held, quit |
-| SELECT | Visualizer |
-| Touch | Everything above, on the bottom screen |
+| `sdmc:/Music/` | Your albums, one folder each (the folder is a setting). |
+| `sdmc:/3ds/3dsFM/settings.ini` | Settings, including shuffle, repeat and the visualizer style. |
+| `sdmc:/3ds/3dsFM/log.txt` | A short log of scans and playback, handy when reporting a bug. |
+| `sdmc:/3ds/dspfirm.cdc` | The DSP firmware NDSP needs. Without it 3dsFM runs silently and says so. |
 
-Sections on the bottom screen: Home (albums), Songs, Artists, Up next, Downloads. Round buttons: Search, Now Playing, Settings.
+## 🛠️ Building
 
-## Layout
+The recommended way is the reproducible container build. All it needs is Docker Desktop, or the Docker CLI with Colima on macOS:
+
+```sh
+git clone https://github.com/ankushKun/3dsFM.git
+cd 3dsFM
+./scripts/build.sh
+```
+
+When it finishes, everything you need is in `dist/`:
+
+```text
+dist/
+├── 3dsFM.3dsx     Homebrew Launcher build
+├── 3dsFM.cia      HOME Menu install
+├── 3dsFM.smdh     icon and title metadata
+└── 3dsFM.sha256   checksums for all of the above
+```
+
+<details>
+<summary><b>What the build script does</b></summary>
+
+<br>
+
+1. Checks that Docker is available and starts Colima if it needs to.
+2. Pulls the digest-pinned `devkitpro/devkitarm:20260610` image and builds the checksum-verified CIA tools image if it isn't cached yet.
+3. Makes sure the launcher icon PNG has a real alpha channel.
+4. Cleans out previous build output.
+5. Compiles 3dsFM with the bundled fonts in romfs, running the containers as your user so nothing in the repository ends up owned by root.
+6. Packs the HOME Menu banner, its jingle and the icon (see [`resources/banner/`](resources/banner/README.md)) and packages both the 3DSX and CIA builds, taking the version from the `VERSION` file.
+7. Writes the release files and their SHA-256 checksums to `dist/`.
+8. Removes intermediate files so the repository root stays clean.
+
+</details>
+
+<details>
+<summary><b>Build options</b></summary>
+
+<br>
+
+```sh
+# Only the 3DSX, for quick emulator runs
+THREEDSFM_3DSX_ONLY=1 ./scripts/build.sh
+
+# Use more compiler jobs
+THREEDSFM_BUILD_JOBS=4 ./scripts/build.sh
+
+# Pack the flat banner picture instead of the 3D model
+THREEDSFM_FLAT_BANNER=1 ./scripts/build.sh
+
+# Pack another CGFX, such as a still of the model (see resources/banner/README.md)
+THREEDSFM_BANNER_CGFX=build/3dsFM-still.cgfx ./scripts/build.sh
+
+# Use another devkitPro image (the default is pinned by digest)
+THREEDSFM_BUILD_IMAGE=devkitpro/devkitarm:20260610 ./scripts/build.sh
+
+# Use another CIA packaging image
+THREEDSFM_CIA_IMAGE=3dsfm-cia-tools:1.0.0 ./scripts/build.sh
+```
+
+</details>
+
+<details>
+<summary><b>Running in the emulator</b></summary>
+
+<br>
+
+```sh
+./scripts/install-emulator.sh       # one-time: a pinned Azahar into ~/Applications
+./scripts/run.sh --build            # build the 3DSX, then open it in Azahar
+./scripts/make-test-music.sh "$HOME/Library/Application Support/Azahar/sdmc/Music"
+                                    # a fake library of tones in every format (needs ffmpeg)
+```
+
+Azahar emulates the DSP at a high level, so any file of a few kilobytes at `sdmc/3ds/dspfirm.cdc` inside its SD card folder gives it sound. It lacks the console's shared font and substitutes a wide one, which is why 3dsFM ships its own.
+
+For crash testing, a file at `sdmc:/3ds/3dsFM/smoke.txt` with space-separated key names (`A B X Y L R UP DOWN LEFT RIGHT START SELECT WAIT`) is played back one key every 20 frames and logged to `log.txt`. Empty files named `debug-noart`, `debug-notext`, `debug-nodots`, `debug-sysfont` or `debug-c2dcircles` in the same folder switch those parts off for A/B testing.
+
+Two emulator notes learned the hard way: Azahar's screenshot action produces a black image for this homebrew, and typing into its window can trip hotkeys (a `-` lowers the speed limit by 5%). If the status bar shows a speed below 100%, reset `frame_limit` in its config.
+
+</details>
+
+<details>
+<summary><b>Other scripts</b></summary>
+
+<br>
+
+```sh
+./scripts/make-banner.sh            # rebuild the 3D HOME Menu banner from resources/banner/
+./resources/banner/render.sh        # re-render the icon, flat banner and website art from the model
+./scripts/make-fonts.sh             # regenerate romfs/fonts from the TTFs
+./scripts/make-site-qr.sh           # regenerate the website's install QR codes
+```
+
+</details>
+
+<details>
+<summary><b>Building without Docker</b></summary>
+
+<br>
+
+Install devkitARM, libctru, Citro2D, Citro3D, 3ds-mpg123, 3ds-libopus, 3ds-opusfile, 3ds-libvorbisidec, 3ds-libogg, 3ds-libjpeg-turbo, 3ds-libpng and 3ds-zlib through devkitPro's pacman, then run `make` in the repository root.
+
+</details>
+
+<details>
+<summary><b>Reproducibility and releases</b></summary>
+
+<br>
+
+Building the same commit twice gives a byte-identical `3dsFM.3dsx`. The CIA is identical too, except for the ticket ID, title key and content ID that makerom randomises on every run; the packaged app inside it does not change.
+
+GitHub Actions runs the tests and the container build on every push and pull request and keeps `dist/` as a build artifact. To release, bump `VERSION`, commit, and push a matching tag such as `v0.2.1`. The workflow checks that the tag matches, verifies the checksums and publishes the release, which the website's QR codes point at through `releases/latest/download/`.
+
+</details>
+
+## 🧪 Testing
+
+Everything that doesn't need console hardware builds and runs on a normal computer: the tag reader (ID3v1, ID3v2.3 and 2.4 with pictures, Vorbis and Opus comments with embedded art, WAV INFO, durations), the library scanner (albums, artists, playlists, cover files, search), the play queue (shuffle, repeat, removal) and time formatting. The tests run under AddressSanitizer and UBSan.
+
+```sh
+make -C tests check
+```
+
+You need a C++17 compiler and Python 3. Thirty tests run from [`tests/unit/`](tests/unit/) against fixtures the tests write themselves.
+
+The parts that need a console (NDSP, the DSP firmware, lid detection, backlights, the HOME Menu banner) are checked by hand on hardware before a release.
+
+<details>
+<summary><b>Project layout</b></summary>
+
+<br>
 
 ```text
 source/app/      console-only code: screens (app.cpp), UI primitives (ui.cpp), art
                  textures (art.cpp), decoders and the NDSP player, platform services
 source/core/     portable logic with no 3DS headers: tag reader, library scanner,
                  play queue, time formatting
-tests/           host-side unit tests for source/core (ASan + UBSan)
-scripts/         container build, emulator install and launch, fonts, test music
+tests/           host-side unit tests for source/core
+scripts/         container build, emulator install and launch, banner, fonts, test music
 resources/       launcher icon, HOME Menu banner and jingle, CIA rsf, font sources
 romfs/fonts/     M PLUS Rounded 1c as BCFNT (SIL OFL), see romfs/fonts/LICENSE.md
-docs/            design system, screen plan, roadmap
+docs/            design system and the build plan
 site/            the website, published by GitHub Pages (see site/README.md)
 ```
 
-Anything that can run without a console lives in `source/core` and has a test. Anything that touches libctru lives in `source/app`.
+Anything that can run without a console lives in `source/core` and has a test. Anything that touches libctru lives in `source/app`. The UI runs on the main thread, audio decoding on the second core when the system allows it, and album art decoding and the library scan on low-priority threads that only use the time the UI spends waiting for vsync.
 
-## Develop
+</details>
 
-Requirements on macOS: Docker (Docker Desktop, or the CLI with Colima), Python 3, and a C++17 compiler for the host tests. No native devkitPro install is needed.
+## 🗺️ Roadmap
 
-```sh
-make -C tests check                 # host unit tests, under sanitizers
-THREEDSFM_3DSX_ONLY=1 ./scripts/build.sh   # fast 3DSX build into dist/
-./scripts/build.sh                  # full build: 3DSX, SMDH, CIA, checksums
-./scripts/make-banner.sh            # rebuild the 3D HOME Menu banner (see resources/banner/README.md)
-./scripts/install-emulator.sh       # one-time: pinned Azahar into ~/Applications
-./scripts/run.sh                    # build if needed and open in Azahar
-./scripts/run.sh --build            # rebuild, then open
-./scripts/make-test-music.sh "$HOME/Library/Application Support/Azahar/sdmc/Music"
-                                    # a fake library of tones in every format (needs ffmpeg)
-./scripts/make-fonts.sh             # regenerate romfs/fonts from the TTFs
-```
+Version **0.2** brought the animated 3D HOME Menu banner and the matching icon. Next up:
 
-For crash testing in the emulator, a file at `sdmc:/3ds/3dsFM/smoke.txt` with space-separated key names (`A B X Y L R UP DOWN LEFT RIGHT START SELECT WAIT`) is played back one key every 20 frames, and each step is logged to `sdmc:/3ds/3dsFM/log.txt`. Frame timings are logged a few times at ten-second intervals. Empty files named `debug-noart`, `debug-notext`, `debug-nodots`, `debug-sysfont` or `debug-c2dcircles` in the same folder switch those parts off for A/B testing.
+- [ ] Hardware pass on a New 3DS: lid-closed playback, the banner, battery with the screens off
+- [ ] A small self-hosted server for search and streaming, paired by QR code
+- [ ] Saving streamed songs to the SD card with 3dsDL's download engine
+- [ ] Lyrics, with `.lrc` sidecar files for local music
+- [ ] Kanji in the bundled fonts
 
-Two emulator notes learned the hard way: Azahar's screenshot action produces a black image for this homebrew, and typing into its window can trip hotkeys (a `-` lowers the speed limit by 5%). If the status bar shows a speed below 100%, reset `frame_limit` in its config.
+The full plan and the decisions behind it live in [docs/PLAN.md](docs/PLAN.md); the design system is in [docs/DESIGN.md](docs/DESIGN.md). Bug reports and focused pull requests are very welcome over in [Issues](https://github.com/ankushKun/3dsFM/issues).
 
-### Threads
+## 💙 Credits
 
-The UI runs on the main thread. Audio decoding runs on the second core when the system allows it. Album art decoding and the library scan each run on a low-priority thread on the first core, so they only use the time the UI spends waiting for vsync and never stall a frame.
+3dsFM stands on the shoulders of these projects:
 
-The build runs inside the digest-pinned `devkitpro/devkitarm` image, so two builds of the same commit give the same `3dsFM.3dsx`.
+- [**mpg123**](https://www.mpg123.de/), [**Tremor**](https://gitlab.xiph.org/xiph/tremor), [**libopus** and **opusfile**](https://opus-codec.org/) and [**libogg**](https://xiph.org/ogg/), for decoding MP3, Ogg Vorbis and Opus
+- [**libjpeg-turbo**](https://libjpeg-turbo.org/), [**libpng**](http://www.libpng.org/pub/png/libpng.html) and [**zlib**](https://zlib.net/), for cover art
+- [**M PLUS Rounded 1c**](https://github.com/coz-m/MPLUS_FONTS) by The M+ FONTS Project, the interface font (SIL OFL, see [romfs/fonts/LICENSE.md](romfs/fonts/LICENSE.md))
+- [**pycgfx**](https://github.com/skyfloogle/pycgfx) by skyfloogle and the banner notes in [**CBC for YANBF**](https://github.com/daaaaavia/CBC-for-YANBF), for the 3D HOME Menu banner
+- [**QR Code generator**](https://www.nayuki.io/page/qr-code-generator-library) by Project Nayuki (MIT), used to draw the website's install codes
+- [**devkitPro**](https://devkitpro.org/), **libctru**, **Citro2D** and **Citro3D**, which make 3DS homebrew possible at all
 
-Releases: bump `VERSION`, commit, then push a matching tag (`git tag v0.1.0 && git push origin v0.1.0`). GitHub Actions builds the 3DSX and CIA, checks the checksums and publishes the release, which the website's QR codes point at through `releases/latest/download/`.
+## 📄 License
 
-### Audio in the emulator and on a console
+3dsFM is released under the [GNU General Public License v3.0](LICENSE). Bundled third-party components keep their own notices.
 
-NDSP needs the console's DSP firmware. Dump it once with [DSP1](https://github.com/zoogie/DSP1) and copy `dspfirm.cdc` to:
+<br>
 
-| Where | Path |
-| --- | --- |
-| Console SD card | `sdmc:/3ds/dspfirm.cdc` |
-| Azahar | `~/Library/Application Support/Azahar/sdmc/3ds/dspfirm.cdc` |
-
-Without it the app runs silently and says so when you try to play. In Azahar any file of a few kilobytes at that path works, because its DSP is emulated at a high level.
-
-The emulator also lacks the console's shared font and substitutes a wide one, which is why 3dsFM ships its own fonts in romfs.
-
-## Install on a console
-
-| Build | Path |
-| --- | --- |
-| Homebrew Launcher | `sdmc:/3ds/3dsFM/3dsFM.3dsx` |
-| HOME Menu | Install `dist/3dsFM.cia` with FBI. Title ID `0004000003D5F100`. |
-
-## License
-
-GPLv3, like 3dsDL.
+<p align="center">
+  <img src="resources/icon-3dsfm.png" width="48" alt="3dsFM icon"><br>
+  Made by <a href="https://ankush.one">ankushKun</a> &nbsp;•&nbsp; <a href="https://github.com/ankushKun">GitHub</a> &nbsp;•&nbsp; <a href="https://x.com/ankushKun_">X</a>
+</p>

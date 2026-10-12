@@ -7,9 +7,16 @@ pipeline and its converter come from 3dsDL, whose banner went through five
 test builds on a console before it worked; the rules it learned are kept
 here unchanged.
 
-> **Status: built, not yet confirmed on a console.** Check it on hardware
-> before a release that packs it (see Testing). `scripts/build.sh` packs the
-> flat picture instead when the CGFX is missing or `THREEDSFM_FLAT_BANNER=1`.
+> **Status: being checked on a console.** The first build (0.2.0) drew its
+> first frame and then froze the HOME Menu, the same symptom as 3dsDL's
+> third build. Compared with the 3dsDL banner that works, it had more
+> vertices than fit in a 2,048 budget once the shared star mesh is counted
+> per node, a rotation keyed every 0.05 s on top of a second sway, and two
+> animated bones that carried their own placement. 0.2.1 removes all three
+> (see the rules below) and can also be built as a still, so a test on a
+> console can tell an animation problem from anything else. `scripts/build.sh`
+> packs the flat picture instead when the CGFX is missing or
+> `THREEDSFM_FLAT_BANNER=1`.
 
 The scene is a glossy dark record with a Clearwater-blue label. It sways and
 spins while a tonearm swings in from the right and drops its needle at 0.7 s;
@@ -50,14 +57,41 @@ banner README; in short:
 - The wordmark is a Y-axis billboard with a hard-edged cut-out (alpha MASK),
   never blended transparency.
 - Nothing scales to nearly nothing: notes hide behind the record instead.
-- About 2,000 triangles at most, textures at most 256 px on a side, the
-  CGFX under 512 KiB, and the sound stereo and under 3 seconds.
+- Animated bones start from the identity. Placement and size go on an
+  unanimated parent (`RecordMount`, `ArmPivot`), as in the 3dsDL banner.
+  `model.py` refuses to animate a node that has its own transform.
+- Every track is keyed every 0.1 s or less often, and a bone that spins does
+  only that: the record's spin is a plain rotation about one axis, and the
+  sway belongs to the rig above it.
+- Under 2,000 triangles and 2,048 vertices counted the way the console
+  draws them, with a mesh shared by two nodes counted twice. The model is
+  1,754 triangles and 1,844 vertices.
+- Textures at most 256 px on a side, the CGFX under 512 KiB, and the sound
+  stereo and under 3 seconds.
 - The camera is fixed at (0, 1, 44.786) looking down -z with a 30° field of
   view, so the plane z = 0 shows x from -20 to 20 and y from -11 to 13.
 
 ## Testing
 
 Install a CIA built with the banner over FBI and select 3dsFM on the HOME
-Menu. If the HOME Menu crashes or freezes, install a flat banner build over
-it (`THREEDSFM_FLAT_BANNER=1 ./scripts/build.sh`) and look at what changed in
-the model since the last good one.
+Menu. If the HOME Menu crashes or freezes, hold POWER, then install a flat
+banner build over it (`THREEDSFM_FLAT_BANNER=1 ./scripts/build.sh`) and look
+at what changed in the model since the last good one.
+
+To tell an animation problem from a model problem, build a still of the
+scene and pack that instead:
+
+```sh
+THREEDSFM_BANNER_STILL=0.8 scripts/make-banner.sh   # also writes build/3dsFM-still.cgfx
+THREEDSFM_BANNER_CGFX=build/3dsFM-still.cgfx ./scripts/build.sh
+```
+
+If the still works and the animated banner does not, the fault is in a
+track; if both freeze, it is in the meshes, materials or texture.
+
+Builds tried on a console:
+
+| Build | Model | Result |
+| --- | --- | --- |
+| 0.2.0 | 2,102 triangles, spin keyed every 0.05 s with a second sway, rig and arm bones carrying their own placement | Drew the first frame, then froze the HOME Menu |
+| 0.2.1 | 1,754 triangles and 1,844 vertices, plain spin keyed every 0.1 s, animated bones from the identity | Being tested |

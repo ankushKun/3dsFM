@@ -66,13 +66,30 @@ for entry in "${PYCGFX_FILES[@]}"; do
     [[ "${actual}" == "${hash}" ]] || fail "pycgfx ${file} does not match its pinned hash."
 done
 
+# THREEDSFM_BANNER_STILL=<seconds> also writes build/3dsFM-still.cgfx, one
+# moment of the scene with no animation, so a test build on a console can
+# tell an animation problem from anything else:
+#   THREEDSFM_BANNER_CGFX=build/3dsFM-still.cgfx ./scripts/build.sh
+STILL="${THREEDSFM_BANNER_STILL:-}"
+CONVERT="python3 build-cgfx.py /pycgfx banner.glb 3dsFM.cgfx"
+if [[ -n "${STILL}" ]]; then
+    step "Building a still of the model at ${STILL} s"
+    python3 "${BANNER}/model.py" --static "${STILL}" "${BANNER}/logo.png" "${WORK}/still.glb"
+    CONVERT="${CONVERT} && python3 build-cgfx.py /pycgfx /work/still.glb /work/3dsFM-still.cgfx"
+fi
+
 step "Converting to CGFX"
 docker run --rm \
     --volume "${BANNER}:/banner" \
+    --volume "${WORK}:/work" \
     --volume "${WORK}/pycgfx:/pycgfx:ro" \
     --workdir /banner \
     "${PYTHON_IMAGE}" \
     sh -c "pip install --quiet --no-cache-dir --disable-pip-version-check --root-user-action=ignore --no-deps ${PYTHON_PACKAGES} \
-           && python3 build-cgfx.py /pycgfx banner.glb 3dsFM.cgfx"
+           && ${CONVERT}"
 
 printf '\nBanner ready: resources/banner/3dsFM.cgfx and resources/banner/jingle.wav\n'
+if [[ -n "${STILL}" ]]; then
+    mv "${WORK}/3dsFM-still.cgfx" "${PROJECT_ROOT}/build/3dsFM-still.cgfx"
+    printf 'Still banner: build/3dsFM-still.cgfx\n'
+fi
