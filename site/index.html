@@ -34,10 +34,10 @@
     <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="M3.5 7l8.5 6 8.5-6"/></symbol>
     <symbol id="i-mail-open" viewBox="0 0 24 24"><path d="M3 10l9-6.5 9 6.5v8.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/><path d="M3.5 10.5l8.5 5.5 8.5-5.5"/></symbol>
     <symbol id="g-library" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></symbol>
-    <symbol id="g-art" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="9.5" r="1.6"/><path d="M4 17l5-4.5 3.5 3 3-2.5 4.5 4"/></symbol>
+    <symbol id="g-mosaic" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7.5" height="7.5" rx="1.5"/><rect x="13" y="3.5" width="7.5" height="7.5" rx="1.5"/><rect x="3.5" y="13" width="7.5" height="7.5" rx="1.5"/><path d="M13 13h7.5v7.5H13z" class="fill"/></symbol>
+    <symbol id="g-chip" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><path d="M9 2.5v4M15 2.5v4M9 17.5v4M15 17.5v4M2.5 9h4M2.5 15h4M17.5 9h4M17.5 15h4"/></symbol>
     <symbol id="g-play" viewBox="0 0 24 24"><path d="M9 18V5l11-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="15" r="2.5"/></symbol>
-    <symbol id="g-queue" viewBox="0 0 24 24"><path d="M4 6.5h11M4 12h11M4 17.5h7"/><path d="M18 6.5v11l3.5-2.5"/></symbol>
-    <symbol id="g-bars" viewBox="0 0 24 24"><path d="M5 18v-5M10 18V6M15 18v-8M20 18v-3"/></symbol>
+        <symbol id="g-bars" viewBox="0 0 24 24"><path d="M5 18v-5M10 18V6M15 18v-8M20 18v-3"/></symbol>
     <symbol id="g-lid" viewBox="0 0 24 24"><path d="M4 15.5V7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8.5"/><path d="M2.5 15.5h19l-1.5 3h-16z"/><path d="M9 10.5h6"/></symbol>
     <symbol id="i-github" viewBox="0 0 24 24"><path class="fill" d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.6 18.3 5 18.3 5c.6 1.7.2 2.9.1 3.2.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A11.5 11.5 0 0 0 23.5 12C23.5 5.7 18.3.5 12 .5z"/></symbol>
   </svg>
@@ -182,7 +182,7 @@
       <section id="features" class="section panel tone-x reveal">
         <header class="section-head">
           <p class="eyebrow">Features</p>
-          <h2>A player that feels like it shipped with the console</h2>
+          <h2>What it does that others don't</h2>
         </header>
         <div class="home" data-home>
           <div class="home-top">
@@ -191,58 +191,35 @@
               <article class="feature is-on" id="feat-library" role="tabpanel" aria-labelledby="feat-library-title">
                 <div class="feature-demo m-list">
                   <span class="m-row m-cyan">sdmc:/Music</span>
-                  <span class="m-row on">Pocket Park · Miki Matsubara</span>
-                  <span class="m-row">Variety · Mariya Takeuchi</span>
-                  <span class="m-row">Top Picks · Playlist</span>
+                  <span class="m-row on">Pocket Park · Miki Matsubara · 1980</span>
+                  <span class="m-row">Sunshower · Taeko Onuki · 1977</span>
+                  <span class="m-row">Loose files · 3 songs</span>
                 </div>
                 <div class="feature-text">
-                  <h3 id="feat-library-title">Albums from folders</h3>
-                  <p>Copy music to <code>sdmc:/Music</code>, one folder per album. Tags are read from MP3, Ogg Vorbis, Opus and WAV; untagged files take their names from the folders.</p>
+                  <h3 id="feat-library-title">Drop folders, get albums</h3>
+                  <p>Copy music to <code>sdmc:/Music</code> and that's the library. ID3v1 and ID3v2, Vorbis comments and Opus tags are read; files without tags take their title from the file name and their album and artist from the folders. No database to build, just rescan when you add more.</p>
                 </div>
               </article>
-              <article class="feature" id="feat-art" role="tabpanel" aria-labelledby="feat-art-title">
+              <article class="feature" id="feat-playlists" role="tabpanel" aria-labelledby="feat-playlists-title">
                 <div class="feature-demo">
-                  <span class="m-line">Cover from the file's own picture</span>
-                  <span class="m-line m-muted">or cover.jpg beside the songs</span>
-                  <span class="m-line m-green">Playlists get a four-cover mosaic</span>
+                  <span class="m-line">Top Picks · 28 songs · 19 artists</span>
+                  <span class="m-line m-green">Playlist · mosaic of 4 covers</span>
+                  <span class="m-line m-muted">The same picture twice counts once</span>
                 </div>
                 <div class="feature-text">
-                  <h3 id="feat-art-title">Art from your files</h3>
-                  <p>Embedded pictures or a cover image in the folder, with rounded corners everywhere. A folder of songs by different artists is a playlist and shows its first four distinct covers.</p>
+                  <h3 id="feat-playlists-title">Mixed folders become playlists</h3>
+                  <p>A folder of songs by different artists isn't an album, so it isn't drawn like one. It gets a mosaic of its first four distinct covers, with identical pictures counted once, and every song keeps its own art in the lists and on the top screen.</p>
                 </div>
               </article>
-              <article class="feature" id="feat-play" role="tabpanel" aria-labelledby="feat-play-title">
+              <article class="feature" id="feat-top" role="tabpanel" aria-labelledby="feat-top-title">
                 <div class="feature-demo">
-                  <span class="m-line">Plastic Love</span>
+                  <span class="m-line">Not Tomorrow (Long Version)</span>
                   <span class="m-bar"><i style="width:37%"></i></span>
-                  <span class="m-line m-muted">1:48 of 4:52 · Up next: Stay With Me</span>
+                  <span class="m-line m-muted">1:05 of 2:56 · Up next: Promise (Reprise)</span>
                 </div>
                 <div class="feature-text">
-                  <h3 id="feat-play-title">Covers fill the top screen</h3>
-                  <p>The playing song's art fogs into the top screen with the title set like a game logo. Whatever the touch screen is doing, the top screen shows what's playing and what's next.</p>
-                </div>
-              </article>
-              <article class="feature" id="feat-queue" role="tabpanel" aria-labelledby="feat-queue-title">
-                <div class="feature-demo m-list">
-                  <span class="m-row m-cyan">Up next · 22 songs</span>
-                  <span class="m-row on">Fly-Day Chinatown</span>
-                  <span class="m-row">4:00 A.M.</span>
-                  <span class="m-row">Midnight Pretenders</span>
-                </div>
-                <div class="feature-text">
-                  <h3 id="feat-queue-title">A queue you can shape</h3>
-                  <p>Y on any song or album adds it to Up next. Tap once to pick, again to jump. Lists scroll with a drag or a flick and stop where you leave them. Shuffle and repeat are a press away.</p>
-                </div>
-              </article>
-              <article class="feature" id="feat-bars" role="tabpanel" aria-labelledby="feat-bars-title">
-                <div class="feature-demo">
-                  <span class="m-line">Bars · Wave · Dots · Art only</span>
-                  <span class="m-bar"><i style="width:72%"></i></span>
-                  <span class="m-line m-muted">20 bands, in the cover's own colors</span>
-                </div>
-                <div class="feature-text">
-                  <h3 id="feat-bars-title">A visualizer in the cover's colors</h3>
-                  <p>SELECT opens it from anywhere. Four styles drawn from the decoded audio, colored from the album art, with the touch screen dimming after a while to save battery.</p>
+                  <h3 id="feat-top-title">The top screen is always the player</h3>
+                  <p>Whatever the touch screen is doing, the top screen shows the song that's playing: its cover fogged into the screen, the title set like a game logo, the time, and what's next. Browse the library below without losing sight of it.</p>
                 </div>
               </article>
               <article class="feature" id="feat-lid" role="tabpanel" aria-labelledby="feat-lid-title">
@@ -253,7 +230,29 @@
                 </div>
                 <div class="feature-text">
                   <h3 id="feat-lid-title">Plays with the lid shut</h3>
-                  <p>Close the lid and the screens go dark while the music carries on, like the console's own sound app. Open it and everything is where you left it.</p>
+                  <p>Close the lid and the screens go dark while the music carries on, the way the console's own sound app does. L and R still skip songs. Open it and everything is where you left it.</p>
+                </div>
+              </article>
+              <article class="feature" id="feat-bars" role="tabpanel" aria-labelledby="feat-bars-title">
+                <div class="feature-demo">
+                  <span class="m-line">Bars · Wave · Dots · Art only</span>
+                  <span class="m-bar"><i style="width:72%"></i></span>
+                  <span class="m-line m-muted">20 bands, two colors from the cover</span>
+                </div>
+                <div class="feature-text">
+                  <h3 id="feat-bars-title">A visualizer in the cover's colors</h3>
+                  <p>The two main colors are pulled from the album art and drive four styles drawn from the decoded audio. SELECT opens it from anywhere, and the touch screen dims after a while to save battery.</p>
+                </div>
+              </article>
+              <article class="feature" id="feat-old" role="tabpanel" aria-labelledby="feat-old-title">
+                <div class="feature-demo">
+                  <span class="m-line">Decoding on the second core</span>
+                  <span class="m-line m-green">60 fps interface on an Old 3DS</span>
+                  <span class="m-line m-muted">Covers decoded in the background</span>
+                </div>
+                <div class="feature-text">
+                  <h3 id="feat-old-title">Smooth on an Old 3DS</h3>
+                  <p>MP3, Ogg Vorbis, Opus and WAV are decoded in software on the second core, covers are decoded on a background thread and uploaded one per frame, and the interface holds 60 fps. A big cover never stalls a scroll.</p>
                 </div>
               </article>
             </div>
@@ -262,15 +261,15 @@
             <div class="home-grid" role="tablist" aria-label="Features">
               <span class="home-cursor" aria-hidden="true"></span>
               <button class="app-icon" type="button" role="tab" id="tab-library" aria-controls="feat-library" aria-selected="true" style="--tint:#2fb6e8"><span class="app-glyph"><svg class="icon"><use href="#g-library"/></svg></span><span class="app-label">Library</span></button>
-              <button class="app-icon" type="button" role="tab" id="tab-art" aria-controls="feat-art" aria-selected="false" tabindex="-1" style="--tint:#f08a3c"><span class="app-glyph"><svg class="icon"><use href="#g-art"/></svg></span><span class="app-label">Covers</span></button>
-              <button class="app-icon" type="button" role="tab" id="tab-play" aria-controls="feat-play" aria-selected="false" tabindex="-1" style="--tint:#3fb45f"><span class="app-glyph"><svg class="icon"><use href="#g-play"/></svg></span><span class="app-label">Now playing</span></button>
-              <button class="app-icon" type="button" role="tab" id="tab-queue" aria-controls="feat-queue" aria-selected="false" tabindex="-1" style="--tint:#eab526"><span class="app-glyph"><svg class="icon"><use href="#g-queue"/></svg></span><span class="app-label">Up next</span></button>
-              <button class="app-icon" type="button" role="tab" id="tab-bars" aria-controls="feat-bars" aria-selected="false" tabindex="-1" style="--tint:#e8577a"><span class="app-glyph"><svg class="icon"><use href="#g-bars"/></svg></span><span class="app-label">Visualizer</span></button>
+              <button class="app-icon" type="button" role="tab" id="tab-playlists" aria-controls="feat-playlists" aria-selected="false" tabindex="-1" style="--tint:#f08a3c"><span class="app-glyph"><svg class="icon"><use href="#g-mosaic"/></svg></span><span class="app-label">Playlists</span></button>
+              <button class="app-icon" type="button" role="tab" id="tab-top" aria-controls="feat-top" aria-selected="false" tabindex="-1" style="--tint:#3fb45f"><span class="app-glyph"><svg class="icon"><use href="#g-play"/></svg></span><span class="app-label">Top screen</span></button>
               <button class="app-icon" type="button" role="tab" id="tab-lid" aria-controls="feat-lid" aria-selected="false" tabindex="-1" style="--tint:#6a75e8"><span class="app-glyph"><svg class="icon"><use href="#g-lid"/></svg></span><span class="app-label">Lid closed</span></button>
+              <button class="app-icon" type="button" role="tab" id="tab-bars" aria-controls="feat-bars" aria-selected="false" tabindex="-1" style="--tint:#e8577a"><span class="app-glyph"><svg class="icon"><use href="#g-bars"/></svg></span><span class="app-label">Visualizer</span></button>
+              <button class="app-icon" type="button" role="tab" id="tab-old" aria-controls="feat-old" aria-selected="false" tabindex="-1" style="--tint:#eab526"><span class="app-glyph"><svg class="icon"><use href="#g-chip"/></svg></span><span class="app-label">Old 3DS</span></button>
             </div>
           </div>
         </div>
-        <p class="also">Also: dark mode by default with a light HOME Menu look in Settings, search with the console's keyboard, long titles that scroll instead of being cut, and a design drawn to match the HOME Menu rather than a phone app.</p>
+        <p class="also">Also: a queue with shuffle and repeat, search with the console's keyboard, lists that scroll by drag and flick, long titles that scroll instead of being cut, L and R to skip from any screen, and dark mode by default with the light HOME Menu look a switch away.</p>
       </section>
 
       <section id="install" class="section panel tone-a">
