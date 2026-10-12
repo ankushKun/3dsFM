@@ -203,6 +203,15 @@
   // need scaling by (rendered width / --photo-w). The factor is set here and
   // kept current as the stage resizes.
   function setUpScreenScale() {
+    // Feature demos: a 3DS-pixel canvas scaled to its box.
+    document.querySelectorAll(".shot").forEach(function (shot) {
+      var base = shot.classList.contains("shot-bot") ? 320 : 400;
+      function fit() {
+        if (shot.clientWidth > 0) shot.style.setProperty("--ks", (shot.clientWidth / base).toFixed(5));
+      }
+      fit();
+      if ("ResizeObserver" in window) new ResizeObserver(fit).observe(shot); else window.addEventListener("resize", fit);
+    });
     document.querySelectorAll(".device-stage").forEach(function (stage) {
       var photoWidth = parseFloat(getComputedStyle(stage).getPropertyValue("--photo-w"));
       if (!photoWidth) return;

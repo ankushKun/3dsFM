@@ -2366,3 +2366,105 @@ dialog::backdrop {
     max-width: 100%;
   }
 }
+
+
+/* ----------------------------------------- Feature demos: real screens
+   drawn in 3DS pixels (400 x 240 and 320 x 240) and scaled to fit, with
+   the same --x/--y/--w/--h vocabulary as the hero's screens. */
+.feature-demo.demo-shot {
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  display: block;
+}
+
+.shot {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 400 / 240;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--sbg, var(--app-bg));
+}
+
+.shot-bot {
+  aspect-ratio: 320 / 240;
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.shot-in {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 400px;
+  height: 240px;
+  transform: scale(var(--ks, 1));
+  transform-origin: 0 0;
+  color: var(--sink, var(--app-text));
+  font-family: var(--font);
+  background: var(--sbg, var(--app-bg));
+}
+
+.shot-bot .shot-in {
+  width: 320px;
+  background: var(--sbot, var(--app-bg-2)) radial-gradient(color-mix(in srgb, var(--smeta, #9aa3af) 45%, transparent) 1.1px, transparent 1.3px) 0 0 / 14px 14px;
+}
+
+.shot .t,
+.shot .r {
+  position: absolute;
+  left: calc(var(--x) * 1px);
+  top: calc(var(--y) * 1px);
+}
+
+.shot .t {
+  font-size: calc(var(--s) * 24px);
+  line-height: 1.25;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.shot .r {
+  width: calc(var(--w) * 1px);
+  height: calc(var(--h) * 1px);
+  border-radius: calc(var(--rad, 0) * 1px);
+}
+
+.shot img.r {
+  display: block;
+  object-fit: cover;
+}
+
+.shot .t-bold { font-weight: 800; }
+.shot .t-muted { color: var(--smeta, var(--app-muted)); }
+.shot .t-end { transform: translateX(-100%); }
+
+.shot .fog {
+  position: absolute;
+  left: -20px;
+  top: -30px;
+  width: 300px;
+  height: 300px;
+  object-fit: cover;
+  -webkit-mask-image: linear-gradient(90deg, #000 40%, transparent 92%);
+  mask-image: linear-gradient(90deg, #000 40%, transparent 92%);
+}
+
+.shot .fog-v {
+  position: absolute;
+  left: -20px;
+  top: 130px;
+  width: 300px;
+  height: 110px;
+  background: linear-gradient(transparent, var(--sbg, var(--app-bg)) 95%);
+}
+
+.shot .fog-top {
+  position: absolute;
+  left: -20px;
+  top: 0;
+  width: 300px;
+  height: 74px;
+  background: linear-gradient(color-mix(in srgb, var(--sbg, var(--app-bg)) 88%, transparent), transparent);
+}
