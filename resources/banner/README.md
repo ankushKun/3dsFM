@@ -7,16 +7,13 @@ pipeline and its converter come from 3dsDL, whose banner went through five
 test builds on a console before it worked; the rules it learned are kept
 here unchanged.
 
-> **Status: being checked on a console.** The first build (0.2.0) drew its
-> first frame and then froze the HOME Menu, the same symptom as 3dsDL's
-> third build. Compared with the 3dsDL banner that works, it had more
-> vertices than fit in a 2,048 budget once the shared star mesh is counted
-> per node, a rotation keyed every 0.05 s on top of a second sway, and two
-> animated bones that carried their own placement. 0.2.1 removes all three
-> (see the rules below) and can also be built as a still, so a test on a
-> console can tell an animation problem from anything else. `scripts/build.sh`
-> packs the flat picture instead when the CGFX is missing or
-> `THREEDSFM_FLAT_BANNER=1`.
+> **Status: being checked on a console.** Builds 0.2.0 and 0.2.1 each drew
+> their first frame and then froze the HOME Menu, the same symptom as
+> 3dsDL's third build. 0.2.2 gives the scene the exact shape of the 3dsDL
+> banner that works: 13 bones two levels deep, 10 meshes, 7 materials, and
+> every animated bone starting from the identity with its placement in its
+> tracks (see the rules below). `scripts/build.sh` packs the flat picture
+> instead when the CGFX is missing or `THREEDSFM_FLAT_BANNER=1`.
 
 The scene is a glossy dark record with a Clearwater-blue label. It sways and
 spins while a tonearm swings in from the right and drops its needle at 0.7 s;
@@ -57,12 +54,15 @@ banner README; in short:
 - The wordmark is a Y-axis billboard with a hard-edged cut-out (alpha MASK),
   never blended transparency.
 - Nothing scales to nearly nothing: notes hide behind the record instead.
-- Animated bones start from the identity. Placement and size go on an
-  unanimated parent (`RecordMount`, `ArmPivot`), as in the 3dsDL banner.
-  `model.py` refuses to animate a node that has its own transform.
-- Every track is keyed every 0.1 s or less often, and a bone that spins does
-  only that: the record's spin is a plain rotation about one axis, and the
-  sway belongs to the rig above it.
+- Animated bones start from the identity and carry their placement and
+  size as constant keys in their own tracks, never as a transform of the
+  bone or of an extra parent. `model.py` refuses to animate a node that has
+  its own transform.
+- No more bones, meshes or materials than the 3dsDL banner (14, 11 and 7),
+  and no bone deeper than its card parts. Parts that share a material share
+  a mesh.
+- Every track is keyed every 0.1 s or less often. The record turns once per
+  loop.
 - Under 2,000 triangles and 2,048 vertices counted the way the console
   draws them, with a mesh shared by two nodes counted twice. The model is
   1,754 triangles and 1,844 vertices.
@@ -94,4 +94,5 @@ Builds tried on a console:
 | Build | Model | Result |
 | --- | --- | --- |
 | 0.2.0 | 2,102 triangles, spin keyed every 0.05 s with a second sway, rig and arm bones carrying their own placement | Drew the first frame, then froze the HOME Menu |
-| 0.2.1 | 1,754 triangles and 1,844 vertices, plain spin keyed every 0.1 s, animated bones from the identity | Being tested |
+| 0.2.1 | 1,754 triangles and 1,844 vertices, plain spin keyed every 0.1 s, placement on unanimated parent bones (19 bones, four deep, 10 materials) | Drew the first frame, then froze the HOME Menu |
+| 0.2.2 | Same geometry on 13 bones two deep, 10 meshes, 7 materials, placement as constant keys | Being tested |

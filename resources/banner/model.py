@@ -34,6 +34,8 @@ import struct
 import sys
 
 LOOP = 4.0  # seconds
+RECORD_AT = (-9.6, -1.4, -1.0)  # where the record sits in the banner
+RECORD_SCALE = 1.25
 
 
 # --------------------------------------------------------------- 2D shapes
@@ -310,6 +312,18 @@ def euler_quat(x, y, z):
     )
 
 
+def quat_mul(a, b):
+    """The rotation b followed by a (both as x, y, z, w)."""
+    ax, ay, az, aw = a
+    bx, by, bz, bw = b
+    return (
+        aw * bx + ax * bw + ay * bz - az * by,
+        aw * by - ax * bz + ay * bw + az * bx,
+        aw * bz + ax * by - ay * bx + az * bw,
+        aw * bw - ax * bx - ay * by - az * bz,
+    )
+
+
 def sampled(fn, step=0.1):
     """Keys every step seconds over the whole loop, from a function of time."""
     count = int(round(LOOP / step))
@@ -323,22 +337,22 @@ def wave(t, period=LOOP, phase=0.0):
 
 
 def record_tracks():
-    """Spins two turns per loop, bobs, and squashes happily when the
-    needle lands. The sway is the rig's, so this rotation is a plain spin
-    about one axis, keyed every 0.1 s like every other track."""
-    rotation = sampled(lambda t: euler_quat(0, 0, math.radians(360.0 * t / 2.0)))
-    scale = [
+    """Placement, sway, spin, bob and the happy squash when the needle
+    lands, on one bone, like the card in the 3dsDL banner. The placement is
+    a constant part of every track rather than a transform of the bone's
+    own, which is how every animated bone in that banner is built."""
+    # The spin is about the record's own axis, inside the sway: the tilt
+    # stays put while the disc turns, as it did with the sway on a parent.
+    rotation = sampled(lambda t: quat_mul(
+        euler_quat(math.radians(-8), math.radians(16) * wave(t), 0),
+        euler_quat(0, 0, math.radians(360.0 * t / LOOP))))
+    squash = [
         (0.0, (1, 1, 1)), (0.7, (1, 1, 1)), (0.8, (1.07, 0.92, 1.07)), (0.95, (0.95, 1.06, 0.95)),
         (1.1, (1.02, 0.98, 1.02)), (1.25, (1, 1, 1)), (LOOP, (1, 1, 1)),
     ]
-    translation = sampled(lambda t: (0.0, 0.2 * wave(t, phase=math.pi / 2), 0.0))
+    scale = [(t, tuple(RECORD_SCALE * v for v in sc)) for t, sc in squash]
+    translation = sampled(lambda t: (RECORD_AT[0], RECORD_AT[1] + 0.25 * wave(t, phase=math.pi / 2), RECORD_AT[2]))
     return translation, rotation, scale
-
-
-def rig_tracks():
-    """The sway, kept separate from the spin so the tilt reads as a tilt."""
-    rotation = sampled(lambda t: euler_quat(math.radians(-8), math.radians(16) * wave(t), math.radians(2) * wave(t, phase=1.2)))
-    return None, rotation, None
 
 
 def arm_track():
@@ -349,7 +363,15 @@ def arm_track():
         (3.55, 0.0), (3.9, 52.0), (LOOP, 52.0),
     ]
     rotation = [(t, euler_quat(0, 0, math.radians(a))) for t, a in angles]
-    return None, rotation, None
+    return [(0.0, ARM_AT), (LOOP, ARM_AT)], rotation, [(0.0, (RECORD_SCALE,) * 3), (LOOP, (RECORD_SCALE,) * 3)]
+
+
+def placed(local):
+    """A point given in record units, in banner units."""
+    return tuple(RECORD_AT[i] + RECORD_SCALE * local[i] for i in range(3))
+
+
+ARM_AT = placed((6.6, 5.4, 1.4))
 
 
 def note_tracks(start, end, size, delay, spin):
@@ -357,7 +379,7 @@ def note_tracks(start, end, size, delay, spin):
     shrinks a little, then waits tucked behind the record until the next
     landing."""
     t0 = 0.95 + delay
-    tucked = (0.0, 0.0, -1.4)
+    tucked = placed((0.0, 0.0, -1.4))
     small = (0.35,) * 3
     translation = [(0.0, tucked), (t0, tucked), (t0 + 0.12, start), (t0 + 0.75, end), (t0 + 0.9, end), (t0 + 0.91, tucked), (LOOP, tucked)]
     scale = [(0.0, small), (t0, small), (t0 + 0.18, (size * 1.15,) * 3), (t0 + 0.6, (size,) * 3), (t0 + 0.9, (0.3,) * 3), (t0 + 0.91, small), (LOOP, small)]
@@ -522,54 +544,43 @@ def build(logo_png, out_path, static=None):
     vinyl = g.material("Vinyl", (0.15, 0.17, 0.2), 0.25)
     groove_mat = g.material("Groove", (0.3, 0.33, 0.38), 0.35)
     label_mat = g.material("Label", (0.23, 0.59, 0.92), 0.3)
-    ring_mat = g.material("LabelRing", (0.56, 0.82, 1.0), 0.35)
-    spindle_mat = g.material("Spindle", (0.93, 0.95, 0.97), 0.4)
+    light_blue = g.material("LightBlue", (0.56, 0.82, 1.0), 0.3)
     arm_mat = g.material("Arm", (0.93, 0.95, 0.97), 0.3)
-    blue = g.material("NoteBlue", (0.56, 0.82, 1.0), 0.3)
-    yellow = g.material("NoteYellow", (1.0, 0.77, 0.1), 0.3)
-    gold = g.material("Twinkle", (1.0, 0.85, 0.29), 0.4)
+    yellow = g.material("Yellow", (1.0, 0.8, 0.18), 0.3)
     logo = g.material("Logo", (1.0, 1.0, 1.0), 1.0, texture=g.texture(logo_png))
 
     root = g.node("Banner")
 
-    # The record spins inside a rig that only sways, so the tilt is a tilt
-    # and the spin is a spin.
-    # Placement and size live on an unanimated bone; the animated bones
-    # below it start from the identity, like every animated bone in the
-    # 3dsDL banner that works on a console.
-    mount = g.node("RecordMount", parent=root, translation=(-9.6, -1.4, -1.0), scale=(1.25, 1.25, 1.25))
-    rig = g.node("RecordRig", parent=mount)
-    g.animate(rig, *rig_tracks())
-    rec = g.node("Record", parent=rig)
-    g.node("RecordBody", g.mesh("RecordBody", record(), vinyl), parent=rec)
+    # The scene has the shape of the 3dsDL banner that works on a console:
+    # fourteen bones at most three deep, seven materials, and animated
+    # bones that start from the identity and carry their placement in their
+    # tracks. The record spins and sways on one bone; its parts hang under
+    # it with no transform of their own.
+    rec = g.node("Record", parent=root)
+    g.animate(rec, *record_tracks())
+    g.node("RecordBody", g.mesh("RecordBody", merge((record(), (0, 0, 0)), (groove_fill(), (0, 0, 0))), vinyl), parent=rec)
     g.node("RecordGroove", g.mesh("RecordGroove", groove(), groove_mat), parent=rec)
-    g.node("RecordGrooveFill", g.mesh("RecordGrooveFill", groove_fill(), vinyl), parent=rec)
-    g.node("RecordLabel", g.mesh("RecordLabel", label(), label_mat), parent=rec)
-    g.node("RecordRing", g.mesh("RecordRing", label_ring(), ring_mat), parent=rec)
-    g.node("RecordRingFill", g.mesh("RecordRingFill", label_fill(), label_mat), parent=rec)
-    g.node("RecordSpindle", g.mesh("RecordSpindle", spindle(), spindle_mat), parent=rec)
-    translation, rotation, scale = record_tracks()
-    g.animate(rec, translation, rotation, scale)
+    g.node("RecordLabel", g.mesh("RecordLabel", merge((label(), (0, 0, 0)), (label_fill(), (0, 0, 0))), label_mat), parent=rec)
+    g.node("RecordRing", g.mesh("RecordRing", merge((label_ring(), (0, 0, 0)), (spindle(), (0, 0, 0))), light_blue), parent=rec)
 
-    # The tonearm pivots at the record's upper right, in front of it.
-    pivot = g.node("ArmPivot", parent=rig, translation=(6.6, 5.4, 1.4))
-    tonearm = g.node("Arm", g.mesh("Arm", arm(), arm_mat), parent=pivot)
+    # The tonearm swings about its pivot, placed by a constant track.
+    tonearm = g.node("Arm", g.mesh("Arm", arm(), arm_mat), parent=root)
     g.animate(tonearm, *arm_track())
 
-    # Notes burst out from under the needle (about (2.0, -2.8) in rig
-    # units) and float off in three directions.
+    # Notes burst out from under the needle and float off in three
+    # directions; positions are given in record units.
     for k, (material, start, end, size, delay, spin) in enumerate([
-        (blue, (2.2, -1.8, 1.6), (5.4, 7.2, 2.2), 1.1, 0.0, 70),
+        (light_blue, (2.2, -1.8, 1.6), (5.4, 7.2, 2.2), 1.1, 0.0, 70),
         (yellow, (1.6, -2.2, 1.6), (-2.6, 8.6, 2.4), 0.95, 0.07, -80),
-        (blue, (2.6, -2.6, 1.6), (8.8, 2.8, 2.0), 0.8, 0.14, 55),
+        (light_blue, (2.6, -2.6, 1.6), (8.8, 2.8, 2.0), 0.8, 0.14, 55),
     ]):
-        node = g.node("Note%d" % (k + 1), g.mesh("Note%d" % (k + 1), note(), material), parent=rig)
-        g.animate(node, *note_tracks(start, end, size, delay, spin))
+        node = g.node("Note%d" % (k + 1), g.mesh("Note%d" % (k + 1), note(), material), parent=root)
+        g.animate(node, *note_tracks(placed(start), placed(end), size * RECORD_SCALE, delay, spin))
 
     wordmark = g.node("Logo", g.mesh("Logo", plane(23.0, 11.5), logo), parent=root)
     g.animate(wordmark, *logo_tracks())
 
-    sparkle = g.mesh("Twinkle", extrude(star(1.0, 0.46), 0.5, 0.1), gold)
+    sparkle = g.mesh("Twinkle", extrude(star(1.0, 0.46), 0.5, 0.1), yellow)
     for k, (position, size, phase) in enumerate([((-0.6, 9.0, 1.0), 1.1, 0.0), ((18.0, -4.6, 2.0), 0.9, 2.1)]):
         node = g.node("Twinkle%d" % (k + 1), sparkle, parent=root)
         g.animate(node, *twinkle_tracks(position, size, phase))
