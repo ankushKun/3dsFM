@@ -689,12 +689,13 @@ void legend(const LegendItem *items, int count, float rightX, float y)
     }
 }
 
-void roundButton(float cx, float cy, float r, Icon which, bool dark, bool focused)
+void roundButton(float cx, float cy, float r, Icon which, bool dark, bool focused, u32 iconColor)
 {
-    if (focused) circle(cx, cy, r + 2.0f, BlueDeep);
+    if (focused) circle(cx, cy, r + 3.0f, Blue);
     circle(cx, cy + 0.8f, r, withAlpha(ShadowBase, 0x1E));
     circle(cx, cy, r, dark ? ButtonDark : Sheet);
-    icon(which, cx, cy, r * 1.15f, dark ? ButtonDarkIcon : Ink, dark ? ButtonDark : Sheet);
+    const u32 fg = iconColor != 0 ? iconColor : dark ? ButtonDarkIcon : Ink;
+    icon(which, cx, cy, r * 1.15f, fg, dark ? ButtonDark : Sheet);
 }
 
 void pill(const std::string &label, float x, float y, u32 bg, u32 fg, float size)

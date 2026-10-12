@@ -74,7 +74,9 @@ struct LegendItem {
 };
 void legend(const LegendItem *items, int count, float rightX, float y);
 
-void roundButton(float cx, float cy, float r, Icon which, bool dark, bool focused = false);
+// focused draws the cursor ring; iconColor (0 for the default) marks a
+// button whose view is the current one without a second ring.
+void roundButton(float cx, float cy, float r, Icon which, bool dark, bool focused = false, u32 iconColor = 0);
 void pill(const std::string &label, float x, float y, u32 bg, u32 fg, float size = 7.0f);
 void tag(const std::string &label, float x, float y, u32 outline, u32 fg);
 void progressBar(float x, float y, float w, float h, float fraction, u32 track = Line);

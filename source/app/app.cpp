@@ -2164,13 +2164,11 @@ struct App::State {
                 ui::icon(icons[i], TabX0 + i * TabStep, TabY, TabIcon, active || cursor ? ui::Blue : ui::Meta, cursor ? ui::BlueTint : ui::BottomBg);
             }
         }
-        // The cursor is a wider ring than the "current view" one.
-        for (int i = 0; i < 3; ++i) {
-            if (chromeFocus == 5 + i) ui::circle(RoundX0 + i * RoundStep, RoundY, RoundR + 4.0f, ui::Blue);
-        }
-        ui::roundButton(RoundX0, RoundY, RoundR, Icon::Search, false, view == View::Search);
-        ui::roundButton(RoundX0 + RoundStep, RoundY, RoundR, Icon::Note, false, view == View::NowPlaying);
-        ui::roundButton(RoundX0 + 2 * RoundStep, RoundY, RoundR, Icon::Gear, true, view == View::Settings);
+        // One cursor on the whole screen: the ring is the cursor, and the
+        // button of the current view shows it by a blue icon instead.
+        ui::roundButton(RoundX0, RoundY, RoundR, Icon::Search, false, chromeFocus == 5, view == View::Search ? ui::Blue : 0);
+        ui::roundButton(RoundX0 + RoundStep, RoundY, RoundR, Icon::Note, false, chromeFocus == 6, view == View::NowPlaying ? ui::Blue : 0);
+        ui::roundButton(RoundX0 + 2 * RoundStep, RoundY, RoundR, Icon::Gear, true, chromeFocus == 7, view == View::Settings ? ui::BlueLight : 0);
     }
 
     // Tiles are rounded by painting their corners in the colour behind them.
@@ -2226,6 +2224,7 @@ struct App::State {
 
     void drawRows(const std::vector<Row> &rows, int focus, float y0, int visible, bool numbers = false, bool scrollable = true)
     {
+        if (chromeFocus >= 0) focus = -1; // the cursor is up in the top row
         const float px = scrollable ? scrollPx() : 0.0f;
         const int first = int(px / RowStep);
         const float frac = px - first * RowStep;
@@ -2331,7 +2330,7 @@ struct App::State {
                     const int index = (firstRow + r) * GridCols + c;
                     if (index >= count) break;
                     const float x = GridX + c * TileStep;
-                    if (index == focusHome) {
+                    if (index == focusHome && chromeFocus < 0) {
                         // The cursor: a blue ring around the tile, like the HOME Menu.
                         ui::roundRect(x - 4.0f, y - 4.0f, Tile + 8.0f, Tile + 8.0f, 8.0f, ui::BlueDeep);
                         ui::roundRect(x - 2.0f, y - 2.0f, Tile + 4.0f, Tile + 4.0f, 6.0f, ui::Sheet);
@@ -2428,7 +2427,8 @@ struct App::State {
     {
         drawBottomChrome(true);
         const bool playing = player.playing();
-        const int ring = focusNowQueue < 0 ? focusNow : -1; // the cursor is in the queue otherwise
+        // The cursor is here only when it is neither in the queue nor in the top row.
+        const int ring = focusNowQueue < 0 && chromeFocus < 0 ? focusNow : -1;
         ui::roundButton(TransportX[0], NowButtonsY, TransportR[0], Icon::Shuffle, false, ring == 0);
         if (settings.shuffle) ui::circle(TransportX[0], NowButtonsY + 14.0f, 1.8f, ui::Blue);
         ui::roundButton(TransportX[1], NowButtonsY, TransportR[1], Icon::Prev, false, ring == 1);
