@@ -2387,10 +2387,24 @@ dialog::backdrop {
   background: var(--sbg, var(--app-bg));
 }
 
+.shot {
+  max-width: 352px;
+  margin: 0 auto;
+}
+
 .shot-bot {
   aspect-ratio: 320 / 240;
-  max-width: 420px;
-  margin: 0 auto;
+  max-width: 282px;
+}
+
+@media (max-width: 640px) {
+  .shot {
+    max-width: 260px;
+  }
+
+  .shot-bot {
+    max-width: 208px;
+  }
 }
 
 .shot-in {
