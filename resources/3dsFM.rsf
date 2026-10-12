@@ -50,7 +50,12 @@ AccessControlInfo:
   EnableL2Cache: true
   CanAccessCore2: false
 
+  # VRAM, plus the two DSP shared-memory windows NDSP writes to. Without
+  # the DSP windows the CIA crashes as soon as sound starts up, while the
+  # 3DSX runs fine because the Homebrew Launcher's host title maps them.
   MemoryMapping:
+    - 1ff50000-1ff57fff
+    - 1ff70000-1ff77fff
     - 1f000000-1f5fffff:r
 
   SystemCallAccess:

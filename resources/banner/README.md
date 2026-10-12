@@ -99,8 +99,10 @@ Builds tried on a console:
 | 0.2.1 | 1,754 triangles and 1,844 vertices, plain spin keyed every 0.1 s, placement on unanimated parent bones (19 bones, four deep, 10 materials) | Drew the first frame, then froze the HOME Menu |
 | 0.2.2 | Same geometry on 13 bones two deep, 10 meshes, 7 materials, placement as constant keys | Drew the first frame, then froze the HOME Menu |
 | 0.2.3 | Record, wordmark and stars only: 8 bones, 5 meshes, 5 materials, 786 triangles, the card's motion from 3dsDL | Being tested |
+| 0.2.4 | Same banner; the CIA itself fixed (the DSP memory windows were not mapped, so the app crashed on launch from the HOME Menu) | Being tested |
 
-Also on the v0.2.2 release, for telling the model from the rest of the
-banner: `3dsFM-3dsdl-model.cia` packs 3dsDL's known-good CGFX with 3dsFM's
-jingle, and `3dsFM-3dsdl-jingle.cia` packs 3dsFM's 0.2.2 model with 3dsDL's
-jingle.
+Two swap builds on the v0.2.2 release settled what is at fault:
+`3dsFM-3dsdl-model.cia` (3dsDL's known-good CGFX with 3dsFM's jingle) showed
+its banner fine, and `3dsFM-3dsdl-jingle.cia` (3dsFM's 0.2.2 model with
+3dsDL's jingle) froze. The jingle and the packaging are fine; the model is
+what freezes the HOME Menu.
