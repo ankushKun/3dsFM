@@ -32,3 +32,40 @@ jobs:
           name: 3dsFM-${{ github.sha }}
           path: dist/
           if-no-files-found: error
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [host-tests, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: 3dsFM-${{ github.sha }}
+          path: dist
+
+      - name: Check that the tag matches VERSION
+        run: |
+          expected="v$(tr -d '[:space:]' < VERSION)"
+          if [ "${GITHUB_REF_NAME}" != "${expected}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match VERSION (${expected})." >&2
+            exit 1
+          fi
+
+      - name: Verify checksums
+        run: cd dist && sha256sum -c 3dsFM.sha256
+
+      # Published straight away so releases/latest/download/... (the QR codes
+      # on the website) points at it as soon as the build is green.
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            dist/3dsFM.3dsx dist/3dsFM.cia dist/3dsFM.smdh dist/3dsFM.sha256 \
+            --title "3dsFM ${GITHUB_REF_NAME}" \
+            --generate-notes

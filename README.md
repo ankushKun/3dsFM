@@ -76,6 +76,8 @@ The UI runs on the main thread. Audio decoding runs on the second core when the 
 
 The build runs inside the digest-pinned `devkitpro/devkitarm` image, so two builds of the same commit give the same `3dsFM.3dsx`.
 
+Releases: bump `VERSION`, commit, then push a matching tag (`git tag v0.1.0 && git push origin v0.1.0`). GitHub Actions builds the 3DSX and CIA, checks the checksums and publishes the release, which the website's QR codes point at through `releases/latest/download/`.
+
 ### Audio in the emulator and on a console
 
 NDSP needs the console's DSP firmware. Dump it once with [DSP1](https://github.com/zoogie/DSP1) and copy `dspfirm.cdc` to:
