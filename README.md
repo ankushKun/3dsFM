@@ -58,6 +58,7 @@ Requirements on macOS: Docker (Docker Desktop, or the CLI with Colima), Python 3
 make -C tests check                 # host unit tests, under sanitizers
 THREEDSFM_3DSX_ONLY=1 ./scripts/build.sh   # fast 3DSX build into dist/
 ./scripts/build.sh                  # full build: 3DSX, SMDH, CIA, checksums
+./scripts/make-banner.sh            # rebuild the 3D HOME Menu banner (see resources/banner/README.md)
 ./scripts/install-emulator.sh       # one-time: pinned Azahar into ~/Applications
 ./scripts/run.sh                    # build if needed and open in Azahar
 ./scripts/run.sh --build            # rebuild, then open

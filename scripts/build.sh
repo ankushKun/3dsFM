@@ -106,8 +106,17 @@ else
 fi
 
 step "Creating HOME Menu metadata and banner"
+# The HOME Menu banner is the animated 3D model from resources/banner/ (see
+# scripts/make-banner.sh). THREEDSFM_FLAT_BANNER=1 packs the flat picture
+# instead; THREEDSFM_BANNER_CGFX packs another model.
+if [[ "${THREEDSFM_FLAT_BANNER:-0}" == "1" || ! -f "${PROJECT_ROOT}/resources/banner/3dsFM.cgfx" ]]; then
+    BANNER_ART=(-i resources/banner-3dsfm.png)
+    printf 'Using the flat banner picture.\n'
+else
+    BANNER_ART=(-ci "${THREEDSFM_BANNER_CGFX:-resources/banner/3dsFM.cgfx}")
+fi
 run_cia_tool bannertool makebanner \
-    -i resources/banner-3dsfm.png \
+    "${BANNER_ART[@]}" \
     -a resources/banner/jingle.wav \
     -o build/3dsFM.bnr
 run_cia_tool bannertool makesmdh \

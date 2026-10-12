@@ -1,0 +1,65 @@
+<!doctype html>
+<!-- The 3dsFM wordmark used as the banner's logo texture. Rendered by
+     resources/banner/render.sh at 1024 x 512 with a transparent background,
+     then scaled to 256 x 128 (the largest texture pycgfx keeps). The thick
+     white sticker edge keeps it readable on every HOME Menu theme, dark
+     letters included. -->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face {
+    font-family: "Mark";
+    font-weight: 800;
+    src: url(../../site/fonts/m-plus-rounded-1c-800-latin.woff2) format("woff2");
+  }
+  html, body {
+    margin: 0;
+    width: 1024px;
+    height: 512px;
+    background: transparent;
+  }
+  .stage {
+    position: relative;
+    width: 1024px;
+    height: 512px;
+  }
+  .word {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-bottom: 18px;
+    font: 800 286px/1 "Mark", sans-serif;
+    letter-spacing: -0.03em;
+    white-space: nowrap;
+  }
+  /* Behind: the white sticker edge and its drop shadow. */
+  .edge {
+    color: #fff;
+    -webkit-text-stroke: 46px #fff;
+    paint-order: stroke fill;
+    filter: drop-shadow(0 16px 0 rgba(21, 23, 27, 0.32));
+  }
+  /* In front: the letters. "3ds" in the selection blue, "FM" in ink. */
+  .face span {
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .face .t3 {
+    background-image: linear-gradient(#a9dfff 0%, #5fb9f5 46%, #2f8fe8 54%, #1c6fc2 100%);
+  }
+  .face .fm {
+    background-image: linear-gradient(#4a515c 0%, #2a2e35 48%, #1d2026 54%, #15171b 100%);
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="word edge"><span>3ds</span><span>FM</span></div>
+    <div class="word face"><span class="t3">3ds</span><span class="fm">FM</span></div>
+  </div>
+</body>
+</html>
