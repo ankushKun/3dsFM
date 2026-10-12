@@ -51,22 +51,24 @@ constexpr float StripX = 10.0f;
 constexpr float StripY = 194.0f;
 constexpr float StripW = 300.0f;
 constexpr float StripH = 42.0f;
-constexpr float RowH = 31.0f;
-constexpr float RowStep = 34.0f;
+constexpr float RowH = 37.0f;       // five rows fit under the tabs
+constexpr float RowStep = 40.0f;
 constexpr float RowX = 10.0f;
 constexpr float RowW = 300.0f;
-constexpr int SectionRows = 6;      // rows visible under the tabs
+constexpr int SectionRows = 5;      // rows visible under the tabs
 constexpr float HeaderH = 48.0f;    // the album and artist header card
 constexpr float HeaderRowsY = 62.0f;
-constexpr int HeaderRows = 5;
+constexpr int HeaderRows = 4;
+constexpr float MenuRowH = 31.0f;   // menus keep tighter rows so six items fit
+constexpr float MenuRowStep = 34.0f;
 constexpr float NowButtonsY = 54.0f;  // Now Playing: the top screen shows the song, so the
 constexpr float NowSeekY = 80.0f;     // bottom has only the transport, a seek bar and the queue
 constexpr float NowQueueLabelY = 90.0f;
 constexpr float NowQueueY = 104.0f;
-constexpr int NowQueueRows = 4;
+constexpr int NowQueueRows = 3;
 constexpr float SearchBarH = 30.0f;
 constexpr float SearchRowsY = 48.0f;
-constexpr int SearchRows = 5;
+constexpr int SearchRows = 4;
 constexpr float SettingHeaderH = 15.0f;
 constexpr float SettingRowH = 23.0f;
 constexpr float MenuX = 48.0f;
@@ -1579,7 +1581,7 @@ struct App::State {
         }
         if (tapped) {
             for (int i = 0; i < count; ++i) {
-                if (ui::hit(MenuX, MenuY + 4.0f + i * RowStep, MenuW, RowH, touch.px, touch.py)) {
+                if (ui::hit(MenuX, MenuY + 4.0f + i * MenuRowStep, MenuW, MenuRowH, touch.px, touch.py)) {
                     menuOpen = false;
                     MenuItem item = menu[i];
                     item.action();
@@ -1587,7 +1589,7 @@ struct App::State {
                 }
             }
             if (ui::hit(MenuX + MenuW + 6.0f, MenuY - 2.0f, 28.0f, 28.0f, touch.px, touch.py)) menuOpen = false;
-            else if (!ui::hit(MenuX, MenuY, MenuW, 8.0f + count * RowStep, touch.px, touch.py)) menuOpen = false;
+            else if (!ui::hit(MenuX, MenuY, MenuW, 8.0f + count * MenuRowStep, touch.px, touch.py)) menuOpen = false;
         }
     }
 
@@ -2185,11 +2187,11 @@ struct App::State {
             float x = RowX + 6.0f;
             const float artSize = RowH - 5.0f;
             if (r.playing) {
-                ui::equaliser(x + 3.0f, y + 11.0f, player.level(), focused ? ui::White : ui::Blue, int(frame));
-                x += 22.0f;
+                ui::equaliser(x + 4.0f, y + 14.0f, player.level(), focused ? ui::White : ui::Blue, int(frame));
+                x += 24.0f;
             } else if (numbers) {
-                ui::text(r.sub, x + 14.0f, y + 9.0f, 10.0f, sub, ui::Align::Right);
-                x += 22.0f;
+                ui::text(r.sub, x + 16.0f, y + 12.0f, 11.0f, sub, ui::Align::Right);
+                x += 24.0f;
             } else if (r.album >= 0 || r.track >= 0) {
                 const art::Image *image = r.track >= 0 ? trackArt(r.track) : albumArt(r.album);
                 if (image != nullptr) {
@@ -2198,19 +2200,19 @@ struct App::State {
                 } else {
                     ui::roundRect(x, y + 2.5f, artSize, artSize, 4.0f, ui::BottomBg);
                 }
-                x += artSize + 5.0f;
+                x += artSize + 6.0f;
             }
-            const float rightW = r.right.empty() ? 0.0f : ui::textWidth(r.right, 11.0f) + 8.0f;
+            const float rightW = r.right.empty() ? 0.0f : ui::textWidth(r.right, 12.0f) + 8.0f;
             const float titleW = RowW - (x - RowX) - rightW - 8.0f;
             if (numbers || r.sub.empty()) {
-                if (focused) ui::marquee("row", r.title, x, y + 8.0f, 13.0f, fg, titleW, ui::Weight::Bold);
-                else ui::text(r.title, x, y + 8.0f, 13.0f, fg, ui::Align::Left, titleW, ui::Weight::Bold);
+                if (focused) ui::marquee("row", r.title, x, y + 10.0f, 14.0f, fg, titleW, ui::Weight::Bold);
+                else ui::text(r.title, x, y + 10.0f, 14.0f, fg, ui::Align::Left, titleW, ui::Weight::Bold);
             } else {
-                if (focused) ui::marquee("row", r.title, x, y + 3.0f, 12.0f, fg, titleW, ui::Weight::Bold);
-                else ui::text(r.title, x, y + 3.0f, 12.0f, fg, ui::Align::Left, titleW, ui::Weight::Bold);
-                ui::text(r.sub, x, y + 18.0f, 10.0f, sub, ui::Align::Left, RowW - (x - RowX) - rightW - 8.0f);
+                if (focused) ui::marquee("row", r.title, x, y + 4.0f, 13.0f, fg, titleW, ui::Weight::Bold);
+                else ui::text(r.title, x, y + 4.0f, 13.0f, fg, ui::Align::Left, titleW, ui::Weight::Bold);
+                ui::text(r.sub, x, y + 21.0f, 11.0f, sub, ui::Align::Left, RowW - (x - RowX) - rightW - 8.0f);
             }
-            if (!r.right.empty()) ui::text(r.right, RowX + RowW - 8.0f, y + 9.0f, 11.0f, sub, ui::Align::Right);
+            if (!r.right.empty()) ui::text(r.right, RowX + RowW - 8.0f, y + 11.0f, 12.0f, sub, ui::Align::Right);
         }
         ui::clipEnd();
         if (int(rows.size()) > visible) {
@@ -2503,16 +2505,16 @@ struct App::State {
     {
         ui::rect(0, 0, BotW, BotH, ui::Dim);
         const int count = int(menu.size());
-        const float h = 8.0f + count * RowStep;
+        const float h = 8.0f + count * MenuRowStep;
         ui::roundRect(MenuX, MenuY + 2.0f, MenuW, h, 8.0f, ui::withAlpha(ui::ShadowBase, 0x30));
         ui::roundRect(MenuX, MenuY, MenuW, h, 8.0f, ui::Sheet);
         for (int i = 0; i < count; ++i) {
-            const float y = MenuY + 4.0f + i * RowStep;
+            const float y = MenuY + 4.0f + i * MenuRowStep;
             const bool focused = i == menuFocus;
-            if (focused) ui::roundRect(MenuX + 4.0f, y, MenuW - 8.0f, RowH, 5.0f, ui::BlueTint);
+            if (focused) ui::roundRect(MenuX + 4.0f, y, MenuW - 8.0f, MenuRowH, 5.0f, ui::BlueTint);
             const u32 fg = !menu[i].enabled ? ui::Meta : focused ? ui::BlueText : ui::Ink;
             ui::text(menu[i].label, MenuX + 10.0f, y + 8.0f, 12.0f, fg, ui::Align::Left, MenuW - 50.0f);
-            ui::icon(menu[i].icon, MenuX + MenuW - 15.0f, y + RowH / 2.0f, 12.0f, focused ? ui::BlueText : ui::Meta, focused ? ui::BlueTint : ui::Sheet);
+            ui::icon(menu[i].icon, MenuX + MenuW - 15.0f, y + MenuRowH / 2.0f, 12.0f, focused ? ui::BlueText : ui::Meta, focused ? ui::BlueTint : ui::Sheet);
         }
         ui::roundButton(MenuX + MenuW + 20.0f, MenuY + 12.0f, 11.0f, Icon::Close, true);
     }
