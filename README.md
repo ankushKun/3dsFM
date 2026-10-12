@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 0.3.1" src="https://img.shields.io/badge/version-0.3.1-3a96eb?style=for-the-badge">
+  <img alt="Version 0.3.2" src="https://img.shields.io/badge/version-0.3.2-3a96eb?style=for-the-badge">
   <img alt="Nintendo 3DS" src="https://img.shields.io/badge/platform-Nintendo%203DS-e60012?style=for-the-badge">
   <img alt="GPLv3 license" src="https://img.shields.io/badge/license-GPLv3-56e39f?style=for-the-badge">
   <img alt="Active development" src="https://img.shields.io/badge/status-in%20development-ffc857?style=for-the-badge">
@@ -32,7 +32,7 @@ The 3DS has stereo speakers, a headphone jack, a clamshell that protects the scr
 It shares its toolchain, container build and release pipeline with [3dsDL](https://github.com/ankushKun/3dsDL), the 3DS downloader.
 
 > [!IMPORTANT]
-> Version 0.3.1 is a development build. Playback from the SD card works in the Azahar emulator and is being checked on a console; the tag reader, library scanner and play queue are covered by automated tests. Streaming from a server, saving songs and pairing have their screens in place but stay switched off until the server exists. The plan is in [docs/PLAN.md](docs/PLAN.md).
+> Version 0.3.2 is a development build. Playback from the SD card works in the Azahar emulator and is being checked on a console; the tag reader, library scanner and play queue are covered by automated tests. Streaming from a server, saving songs and pairing have their screens in place but stay switched off until the server exists. The plan is in [docs/PLAN.md](docs/PLAN.md).
 
 ## ✨ Features
 
@@ -145,6 +145,7 @@ A folder whose songs have different artists is shown as a playlist with a mosaic
 | Where | Input | What it does |
 | --- | --- | --- |
 | Everywhere | D-Pad, Circle Pad or touch | Move the focus, or tap once to select and again to open |
+| Everywhere | Up from the top of a list | Move the cursor into the top row: the tabs, Search, Now Playing and Settings. Left and Right move along it, A opens, Down or B comes back |
 | Everywhere | <kbd>A</kbd> / <kbd>B</kbd> | Open, play or pause / go back |
 | Everywhere | <kbd>L</kbd> / <kbd>R</kbd> | Previous and next song |
 | Everywhere | <kbd>START</kbd> | Play or pause; with <kbd>SELECT</kbd> held, quit |
@@ -291,7 +292,7 @@ Install devkitARM, libctru, Citro2D, Citro3D, 3ds-mpg123, 3ds-libopus, 3ds-opusf
 
 Building the same commit twice gives a byte-identical `3dsFM.3dsx`. The CIA is identical too, except for the ticket ID, title key and content ID that makerom randomises on every run; the packaged app inside it does not change.
 
-GitHub Actions runs the tests and the container build on every push and pull request and keeps `dist/` as a build artifact. To release, bump `VERSION`, commit, and push a matching tag such as `v0.3.1`. The workflow checks that the tag matches, verifies the checksums and publishes the release, which the website's QR codes point at through `releases/latest/download/`.
+GitHub Actions runs the tests and the container build on every push and pull request and keeps `dist/` as a build artifact. To release, bump `VERSION`, commit, and push a matching tag such as `v0.3.2`. The workflow checks that the tag matches, verifies the checksums and publishes the release, which the website's QR codes point at through `releases/latest/download/`.
 
 </details>
 

@@ -511,6 +511,46 @@ struct App::State {
             previous = view;
             view = v;
         }
+        if (!chromeShown()) chromeFocus = -1;
+    }
+
+    // The cursor can climb into the top row of the bottom screen: the five
+    // tabs, then Search, Now Playing and Settings (0 to 7). -1 means it is
+    // down in the content. Search and Settings draw no top row, so the
+    // cursor lands in their content when they open.
+    int chromeFocus = -1;
+    bool chromeShown() const { return view == View::Section || view == View::NowPlaying || view == View::Album || view == View::Artist; }
+    bool chromeHasTabs() const { return view == View::Section || view == View::NowPlaying; }
+    void enterChrome() { chromeFocus = view == View::Section ? int(section) : view == View::NowPlaying ? 6 : 5; }
+    void activateChrome(int i)
+    {
+        if (i < 5) {
+            section = Section(i);
+            listScroll = 0;
+            listPx = 0.0f;
+            if (view != View::Section) go(View::Section);
+        } else if (i == 5) {
+            go(View::Search);
+        } else if (i == 6) {
+            go(View::NowPlaying);
+        } else {
+            go(View::Settings);
+        }
+    }
+    // Keys while the cursor is in the top row. Returns false when it is not.
+    bool updateChrome(u32 k, u32 kd)
+    {
+        if (chromeFocus < 0) return false;
+        const int first = chromeHasTabs() ? 0 : 5;
+        if (chromeFocus < first) chromeFocus = first;
+        if (left(k)) chromeFocus = chromeFocus > first ? chromeFocus - 1 : 7;
+        if (right(k)) chromeFocus = chromeFocus < 7 ? chromeFocus + 1 : first;
+        if (down(k) || (kd & KEY_B)) {
+            chromeFocus = -1;
+            return true;
+        }
+        if (kd & KEY_A) activateChrome(chromeFocus);
+        return true;
     }
 
     void back()
@@ -874,7 +914,8 @@ struct App::State {
                 const std::vector<const core::Item *> upcoming = queue.upcoming();
                 return focusUpNext < int(upcoming.size()) ? albumIndexOfTrack(upcoming[focusUpNext]->libraryIndex) : albumIndexOfTrack(nowTrack);
             }
-            case Section::Downloads: return -1;
+            case Section::Downloads:
+                return -1;
             }
             return -1;
         case View::Album: return albumView;
@@ -1097,6 +1138,12 @@ struct App::State {
             if (view == View::Visualizer) back(); else go(View::Visualizer);
         }
 
+        // A tap takes the cursor out of the top row; keys up there stay there.
+        if (chromeShown() && chromeFocus >= 0) {
+            if (tapped) chromeFocus = -1;
+            else if (updateChrome(k, kd)) return;
+        }
+
         switch (view) {
         case View::Section: updateSection(k, kd, tapped, touch); break;
         case View::Album: updateAlbum(k, kd, tapped, touch); break;
@@ -1174,6 +1221,7 @@ struct App::State {
             const int count = int(library.albums().size());
             if (count == 0) break;
             if (focusHome >= count) focusHome = count - 1;
+            if (up(k) && focusHome < GridCols) { enterChrome(); break; }
             const bool navigated = left(k) || right(k) || up(k) || down(k);
             if (navigated) {
                 // Off-screen cursor after a drag: bring it to the visible rows first.
@@ -1221,6 +1269,7 @@ struct App::State {
         }
         case Section::Songs: {
             const std::vector<int> &all = allTracks();
+            if (up(k) && focusSongs == 0) { enterChrome(); break; }
             moveListFocus(focusSongs, int(all.size()), SectionRows, k);
             if (all.empty()) break;
             if (kd & KEY_A) playList(all, focusSongs);
@@ -1234,6 +1283,7 @@ struct App::State {
         }
         case Section::Artists: {
             const std::vector<std::string> artists = library.artists();
+            if (up(k) && focusArtists == 0) { enterChrome(); break; }
             moveListFocus(focusArtists, int(artists.size()), SectionRows, k);
             if (artists.empty()) break;
             if (kd & KEY_A) openArtist(artists[focusArtists]);
@@ -1245,6 +1295,7 @@ struct App::State {
         }
         case Section::UpNext: {
             const std::vector<const core::Item *> upcoming = queue.upcoming();
+            if (up(k) && focusUpNext == 0) { enterChrome(); break; }
             moveListFocus(focusUpNext, int(upcoming.size()), SectionRows, k);
             if (upcoming.empty()) break;
             auto queueIndexOf = [&](int upcomingIndex) {
@@ -1293,6 +1344,7 @@ struct App::State {
             break;
         }
         case Section::Downloads:
+            if (up(k)) enterChrome();
             if (kd & KEY_A) disabled("Saving");
             break;
         }
@@ -1341,6 +1393,7 @@ struct App::State {
         const core::Album &a = library.albums()[albumView];
         if (tapped && chromeTap(touch, false)) return;
         if (kd & KEY_B) { back(); return; }
+        if (up(k) && focusAlbum == 0) { enterChrome(); return; }
         moveListFocus(focusAlbum, int(a.tracks.size()), HeaderRows, k);
         if (kd & KEY_A && !a.tracks.empty()) playList(a.tracks, focusAlbum);
         if (kd & KEY_Y && !a.tracks.empty()) openTrackMenu(a.tracks[focusAlbum]);
@@ -1359,6 +1412,7 @@ struct App::State {
     {
         if (tapped && chromeTap(touch, false)) return;
         if (kd & KEY_B) { back(); return; }
+        if (up(k) && focusArtist == 0) { enterChrome(); return; }
         moveListFocus(focusArtist, int(artistAlbums.size()), HeaderRows, k);
         if (artistAlbums.empty()) return;
         if (kd & KEY_A) openAlbum(artistAlbums[focusArtist]);
@@ -1378,6 +1432,7 @@ struct App::State {
         const std::vector<const core::Item *> queued = queue.upcoming();
         const int queueRows = std::min(NowQueueRows, int(queued.size()) - 1);
         if (focusNowQueue < 0) {
+            if (up(k)) { enterChrome(); return; }
             if (left(k)) focusNow = (focusNow + 4) % 5;
             if (right(k)) focusNow = (focusNow + 1) % 5;
             if (down(k) && queueRows > 0) focusNowQueue = 1;
@@ -2104,8 +2159,14 @@ struct App::State {
             static const Icon icons[5] = {Icon::Home, Icon::Note, Icon::Person, Icon::Queue, Icon::Download};
             for (int i = 0; i < 5; ++i) {
                 const bool active = view == View::Section && int(section) == i;
-                ui::icon(icons[i], TabX0 + i * TabStep, TabY, TabIcon, active ? ui::Blue : ui::Meta, ui::BottomBg);
+                const bool cursor = chromeFocus == i;
+                if (cursor) ui::circle(TabX0 + i * TabStep, TabY, 15.0f, ui::BlueTint);
+                ui::icon(icons[i], TabX0 + i * TabStep, TabY, TabIcon, active || cursor ? ui::Blue : ui::Meta, cursor ? ui::BlueTint : ui::BottomBg);
             }
+        }
+        // The cursor is a wider ring than the "current view" one.
+        for (int i = 0; i < 3; ++i) {
+            if (chromeFocus == 5 + i) ui::circle(RoundX0 + i * RoundStep, RoundY, RoundR + 4.0f, ui::Blue);
         }
         ui::roundButton(RoundX0, RoundY, RoundR, Icon::Search, false, view == View::Search);
         ui::roundButton(RoundX0 + RoundStep, RoundY, RoundR, Icon::Note, false, view == View::NowPlaying);
