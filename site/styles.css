@@ -612,6 +612,12 @@ symbol .fill {
   font-weight: 800;
 }
 
+.screen img.cover {
+  display: block;
+  object-fit: cover;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+}
+
 .screen .r-fill {
   width: calc(var(--w) * 1px * var(--p, 0.7));
 }
@@ -2323,4 +2329,40 @@ dialog::backdrop {
 
 .msg-app .tree {
   background: rgba(255, 255, 255, 0.72);
+}
+
+
+/* The Add music chat is a conversation: bubbles stack, yours on the left
+   and the app's on the right, each no wider than it needs. */
+#music .chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+#music .msg {
+  max-width: min(78%, 640px);
+}
+
+#music .msg p {
+  margin: 0 0 0.5em;
+}
+
+#music .msg p:last-child {
+  margin-bottom: 0;
+}
+
+#music .msg-you {
+  align-self: flex-start;
+}
+
+#music .msg-app {
+  align-self: flex-end;
+  margin-top: 0;
+}
+
+@media (max-width: 720px) {
+  #music .msg {
+    max-width: 100%;
+  }
 }

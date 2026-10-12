@@ -95,19 +95,56 @@
     var artists = document.querySelectorAll("[data-demo-artist]");
     var albums = document.querySelectorAll("[data-demo-album]");
     var lengths = document.querySelectorAll("[data-demo-len]");
-    var nextTitle = document.querySelector("[data-demo-next-title]");
-    var nextArtist = document.querySelector("[data-demo-next-artist]");
+    var nextArtist = document.querySelector("[data-demo-next-artist][data-demo-next='1']");
     var state = document.querySelector("[data-demo-state]");
     if (!bars.length || !titles.length || reduceMotion) return;
 
     var songs = [
-      { title: "Plastic Love", artist: "Mariya Takeuchi", album: "Variety · 1984", length: 292, start: 108 },
-      { title: "Stay With Me", artist: "Miki Matsubara", album: "Pocket Park · 1980", length: 257, start: 0 },
-      { title: "Fly-Day Chinatown", artist: "Yasuha", album: "Flyday Chinatown · 1981", length: 275, start: 0 },
-      { title: "4:00 A.M.", artist: "Taeko Onuki", album: "Sunshower · 1977", length: 291, start: 0 }
+      { id: "tDgjTP8fuz4", title: "Not Tomorrow (Long Version)", artist: "Akira Yamaoka", length: 176 },
+      { id: "ZwLvcaDMhU8", title: "Promise (Reprise)", artist: "Akira Yamaoka", length: 105 },
+      { id: "lXoVugTertI", title: "Subwoofer Lullaby", artist: "C418", length: 209 },
+      { id: "5w3rRFWzjcM", title: "Sweden", artist: "C418", length: 216 },
+      { id: "enHmnTPsp9w", title: "I Want Love (Studio Mix)", artist: "Akira Yamaoka", length: 281 },
+      { id: "jb1SkDjaXk8", title: "Obstacles", artist: "Syd Matters", length: 210 },
+      { id: "Qg6BwvDcANg", title: "Tessellate", artist: "alt-J", length: 188 },
+      { id: "maWHojZTnTg", title: "Aria Math", artist: "C418", length: 310 },
+      { id: "_ZaeKhITDWw", title: "Hazardous Environments", artist: "Valve", length: 83 },
+      { id: "td3P1-cfZ4E", title: "Theme of Laura", artist: "Akira Yamaoka", length: 205 },
+      { id: "2zPGWGqdfJ8", title: "oh yeah?", artist: "Steve Lacy", length: 171 },
+      { id: "MX7FSAnRPug", title: "Loser", artist: "Tame Impala", length: 224 },
+      { id: "SCzjQePVhl8", title: "To All of You", artist: "Syd Matters", length: 284 },
+      { id: "UkumV_dHbkg", title: "You're Not Here", artist: "Akira Yamaoka", length: 226 },
+      { id: "D1Fw6CbGAX4", title: "Running Up That Hill (A Deal With God)", artist: "Kate Bush", length: 299 },
+      { id: "Kf5pXDhx5Vc", title: "End of Beginning", artist: "Djo", length: 160 },
+      { id: "cuMuMnCRfqk", title: "Dracula", artist: "Tame Impala", length: 206 },
+      { id: "-SaUrDhp034", title: "Every Breath You Take", artist: "The Police", length: 254 },
+      { id: "Y1-Qymcppps", title: "Everybody Wants To Rule The World", artist: "Tears for Fears", length: 252 },
+      { id: "HzdD8kbDzZA", title: "Take on Me", artist: "a-ha", length: 226 },
+      { id: "7qlU0bWMzUU", title: "Never Ending Story", artist: "Gaten Matarazzo & Gabriella Pizzolo", length: 126 },
+      { id: "wjZMcWaniA4", title: "Should I Stay or Should I Go (Remastered)", artist: "The Clash", length: 189 },
+      { id: "fEnpB9fPUbg", title: "Want You Gone", artist: "Aperture Science Psychoacoustic Laboratories", length: 144 },
+      { id: "i5_asj1BGFs", title: "Sweet Dreams (Are Made of This)", artist: "Eurythmics", length: 218 },
+      { id: "qGBohd0V2Mo", title: "Video Killed The Radio Star", artist: "The Buggles", length: 254 },
+      { id: "lYBUbBu4W08", title: "Never Gonna Give You Up", artist: "Rick Astley", length: 214 },
+      { id: "Ha2OcL_0gtM", title: "Kids", artist: "Kyle Dixon & Michael Stein", length: 158 },
+      { id: "qnleYf6Qmfk", title: "Vs Red HeartGold SoulSilver (Pokemon EPIC REMIX)", artist: "Cyastorber", length: 186 }
     ];
+    // A different order on every visit, like shuffle on the console.
+    for (var i = songs.length - 1; i > 0; i -= 1) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var swap = songs[i];
+      songs[i] = songs[j];
+      songs[j] = swap;
+    }
+    var covers = document.querySelectorAll("[data-demo-cover]");
+    var nextCovers = document.querySelectorAll("[data-demo-next-cover]");
+    var nextRows = {
+      title: document.querySelectorAll("[data-demo-next-title]"),
+      artist: document.querySelectorAll("[data-demo-next-artist]"),
+      length: document.querySelectorAll("[data-demo-next-len]")
+    };
     var index = 0;
-    var position = songs[0].start;
+    var position = Math.floor(songs[0].length * 0.37);
     var pauseUntil = 0;
 
     function clock(seconds) {
@@ -116,17 +153,32 @@
     function setAll(list, text) {
       list.forEach(function (element) { element.textContent = text; });
     }
+    function cover(song) {
+      return "assets/covers/" + song.id + ".jpg";
+    }
     function show() {
       var song = songs[index];
-      var next = songs[(index + 1) % songs.length];
       setAll(titles, song.title);
       setAll(artists, song.artist);
-      setAll(albums, song.album);
+      setAll(albums, "Top Picks · Playlist");
       setAll(lengths, clock(song.length));
       setAll(positions, clock(position));
       bars.forEach(function (bar) { bar.style.setProperty("--p", (position / song.length).toFixed(4)); });
-      if (nextTitle) nextTitle.textContent = next.title;
-      if (nextArtist) nextArtist.textContent = "Up next · " + next.artist;
+      covers.forEach(function (image) { image.src = cover(song); });
+      // The next three songs fill the up-next rows; the first also sits in
+      // the top screen's corner.
+      for (var n = 1; n <= 3; n += 1) {
+        var upcoming = songs[(index + n) % songs.length];
+        var at = function (list) {
+          return Array.prototype.filter.call(list, function (element) {
+            return (element.getAttribute("data-demo-next") || "1") === String(n);
+          });
+        };
+        setAll(at(nextRows.title), upcoming.title);
+        setAll(at(nextRows.artist), n === 1 && nextArtist ? "Up next · " + upcoming.artist : upcoming.artist);
+        setAll(at(nextRows.length), clock(upcoming.length));
+        at(nextCovers).forEach(function (image) { image.src = cover(upcoming); });
+      }
       if (state) state.textContent = "Now playing · MP3 · " + (songs.length - 1) + " songs queued";
     }
     show();
