@@ -655,13 +655,17 @@ void legend(const LegendItem *items, int count, float rightX, float y)
     }
 }
 
-void roundButton(float cx, float cy, float r, Icon which, bool dark, bool focused, u32 iconColor)
+// One look for every round button: a sheet disc with an ink glyph. The
+// cursor fills it with the selection tint and turns the glyph blue, the
+// same mark the tabs use. `primary` (the Play buttons) is the accent blue
+// with a white glyph.
+void roundButton(float cx, float cy, float r, Icon which, bool primary, bool focused, u32 iconColor)
 {
-    if (focused) circle(cx, cy, r + 3.0f, Blue);
+    const u32 bg = focused ? BlueTint : primary ? Blue : Sheet;
+    const u32 fg = focused ? Blue : iconColor != 0 ? iconColor : primary ? White : Ink;
     circle(cx, cy + 0.8f, r, withAlpha(ShadowBase, 0x1E));
-    circle(cx, cy, r, dark ? ButtonDark : Sheet);
-    const u32 fg = iconColor != 0 ? iconColor : dark ? ButtonDarkIcon : Ink;
-    icon(which, cx, cy, r * 1.15f, fg, dark ? ButtonDark : Sheet);
+    circle(cx, cy, r, bg);
+    icon(which, cx, cy, r * 1.15f, fg, bg);
 }
 
 void pill(const std::string &label, float x, float y, u32 bg, u32 fg, float size)

@@ -75,8 +75,7 @@ constexpr float SearchRowsY = 48.0f;
 constexpr int SearchRows = 4;
 constexpr float SettingHeaderH = 15.0f;
 constexpr float SettingRowH = 23.0f;
-constexpr float MenuX = 48.0f;
-constexpr float MenuY = 14.0f;
+constexpr float MenuX = 75.0f; // centred: (320 - MenuW) / 2
 constexpr float MenuW = 170.0f;
 constexpr float DialogButtonY = 146.0f;
 constexpr float DialogButtonH = 24.0f;
@@ -166,6 +165,9 @@ struct App::State {
     bool flowDragged = false;
     float flowDragStartX = 0.0f;
     float flowDragStartPos = 0.0f;
+    float flowLastX = 0.0f;
+    float flowVelocity = 0.0f; // covers per frame while a flick runs on
+    bool flowCoasting = false;
     int focusSearch = 0;
     int focusSettings = 2;
     int focusNow = 2; // transport index
@@ -1074,6 +1076,9 @@ struct App::State {
     }
 
     // ---- menus ----
+    // The menu sits in the middle of the screen whatever it holds.
+    float menuHeight() const { return 8.0f + float(menu.size()) * MenuRowStep; }
+    float menuTop() const { return std::floor((BotH - menuHeight()) / 2.0f); }
     void openTrackMenu(int trackIndex)
     {
         menu.clear();
@@ -1395,7 +1400,9 @@ struct App::State {
 
     void updateSection(u32 k, u32 kd, bool tapped, const touchPosition &touch)
     {
-        if (tapped && chromeTap(touch, true)) return;
+        // A flick across the covers is not a tap on whatever it ends over.
+        const bool flick = section == Section::Songs && songsView() == SongsView::Flow && flowDragged;
+        if (tapped && !flick && chromeTap(touch, true)) return;
         if (kd & KEY_B) {
             if (section != Section::Songs) { section = Section::Songs; listScroll = 0; listPx = 0.0f; }
             return;
@@ -1519,30 +1526,52 @@ struct App::State {
             return;
         }
         case SongsView::Flow: {
-            // A sideways drag moves the covers directly; letting go settles
-            // on the nearest one. A drag swallows the tap it ends with.
+            // A sideways drag moves the covers with the finger; letting go
+            // with speed flicks them on, slowing until they settle on the
+            // nearest cover. A drag swallows the tap it ends with, and a
+            // touch or a key stops a flick where it is.
             touchPosition now{};
             hidTouchRead(&now);
             if (hidKeysDown() & KEY_TOUCH) {
                 flowDragging = true;
                 flowDragged = false;
+                flowCoasting = false;
+                flowVelocity = 0.0f;
                 flowDragStartX = float(now.px);
+                flowLastX = flowDragStartX;
                 flowDragStartPos = flowPos;
             } else if (flowDragging && (hidKeysHeld() & KEY_TOUCH)) {
                 const float dx = float(now.px) - flowDragStartX;
                 if (!flowDragged && std::fabs(dx) > 6.0f) flowDragged = true;
                 if (flowDragged) {
                     flowPos = std::max(0.0f, std::min(float(count - 1), flowDragStartPos - dx / FlowSpacing));
+                    // Velocity smoothed over the last frames, so a pause before
+                    // letting go means no flick.
+                    flowVelocity = flowVelocity * 0.5f + ((flowLastX - float(now.px)) / FlowSpacing) * 0.5f;
                     focusSongs = int(flowPos + 0.5f);
                 }
+                flowLastX = float(now.px);
             } else if (flowDragging && (hidKeysUp() & KEY_TOUCH)) {
                 flowDragging = false;
                 if (flowDragged) {
-                    focusSongs = std::max(0, std::min(count - 1, int(flowPos + 0.5f)));
+                    if (std::fabs(flowVelocity) > 0.04f) flowCoasting = true;
+                    else focusSongs = std::max(0, std::min(count - 1, int(flowPos + 0.5f)));
                     flowDragged = false;
                     return;
                 }
             }
+            if (flowCoasting) {
+                flowPos += flowVelocity;
+                flowVelocity *= 0.94f;
+                if (flowPos <= 0.0f) { flowPos = 0.0f; flowVelocity = 0.0f; }
+                if (flowPos >= float(count - 1)) { flowPos = float(count - 1); flowVelocity = 0.0f; }
+                focusSongs = std::max(0, std::min(count - 1, int(flowPos + 0.5f)));
+                if (std::fabs(flowVelocity) < 0.02f) {
+                    flowCoasting = false;
+                    flowVelocity = 0.0f;
+                }
+            }
+            if (k != 0) flowCoasting = false;
             if (up(k)) { enterChrome(); return; }
             if (left(k) && focusSongs > 0) --focusSongs;
             if (right(k) && focusSongs + 1 < count) ++focusSongs;
@@ -1824,15 +1853,15 @@ struct App::State {
         }
         if (tapped) {
             for (int i = 0; i < count; ++i) {
-                if (ui::hit(MenuX, MenuY + 4.0f + i * MenuRowStep, MenuW, MenuRowH, touch.px, touch.py)) {
+                if (ui::hit(MenuX, menuTop() + 4.0f + i * MenuRowStep, MenuW, MenuRowH, touch.px, touch.py)) {
                     menuOpen = false;
                     MenuItem item = menu[i];
                     item.action();
                     return;
                 }
             }
-            if (ui::hit(MenuX + MenuW + 6.0f, MenuY - 2.0f, 28.0f, 28.0f, touch.px, touch.py)) menuOpen = false;
-            else if (!ui::hit(MenuX, MenuY, MenuW, 8.0f + count * MenuRowStep, touch.px, touch.py)) menuOpen = false;
+            if (ui::hit(MenuX + MenuW + 6.0f, menuTop() - 2.0f, 28.0f, 28.0f, touch.px, touch.py)) menuOpen = false;
+            else if (!ui::hit(MenuX, menuTop(), MenuW, menuHeight(), touch.px, touch.py)) menuOpen = false;
         }
     }
 
@@ -2270,11 +2299,11 @@ struct App::State {
                 ui::icon(icons[i], TabX0 + i * TabStep, TabY, TabIcon, active || cursor ? ui::Blue : ui::Meta, cursor ? ui::BlueTint : ui::BottomBg);
             }
         }
-        // One cursor on the whole screen: the ring is the cursor, and the
-        // button of the current view shows it by a blue icon instead.
+        // One cursor on the whole screen, one mark for it: the tinted disc
+        // with a blue glyph. The current view is a blue glyph on its own.
         ui::roundButton(RoundX0, RoundY, RoundR, Icon::Search, false, chromeFocus == ChromeSearch, view == View::Search ? ui::Blue : 0);
         ui::roundButton(RoundX0 + RoundStep, RoundY, RoundR, Icon::Note, false, chromeFocus == ChromeNow, view == View::NowPlaying ? ui::Blue : 0);
-        ui::roundButton(RoundX0 + 2 * RoundStep, RoundY, RoundR, Icon::Gear, true, chromeFocus == ChromeSettings, view == View::Settings ? ui::BlueLight : 0);
+        ui::roundButton(RoundX0 + 2 * RoundStep, RoundY, RoundR, Icon::Gear, false, chromeFocus == ChromeSettings, view == View::Settings ? ui::Blue : 0);
     }
 
     // Tiles are rounded by painting their corners in the colour behind them.
@@ -2494,8 +2523,8 @@ struct App::State {
     void drawFlow(const std::vector<int> &all)
     {
         const int count = int(all.size());
-        if (!flowDragging) flowPos += (float(focusSongs) - flowPos) * 0.35f;
-        if (std::fabs(flowPos - float(focusSongs)) < 0.01f && !flowDragging) flowPos = float(focusSongs);
+        if (!flowDragging && !flowCoasting) flowPos += (float(focusSongs) - flowPos) * 0.3f;
+        if (std::fabs(flowPos - float(focusSongs)) < 0.01f && !flowDragging && !flowCoasting) flowPos = float(focusSongs);
         // Far covers first so the near ones paint over them.
         const int centre = int(flowPos + 0.5f);
         for (int ring = 4; ring >= 0; --ring) {
@@ -2509,8 +2538,18 @@ struct App::State {
                 const float x = 160.0f + d * FlowSpacing + lean * 34.0f;
                 const float size = 124.0f - ad * 22.0f;
                 const float y = FlowCenterY - size / 2.0f;
-                drawTileImage(trackArt(all[index]), x - size / 2.0f, y, size);
-                if (ad > 0.05f) ui::roundRect(x - size / 2.0f, y, size, size, tileRadius(size), ui::withAlpha(ui::ShadowBase, u8(std::min(160.0f, 48.0f + ad * 40.0f))));
+                const float left = x - size / 2.0f;
+                // Square sleeves, as the covers overlap: a rounded corner would
+                // have to be painted in the background colour over its neighbour.
+                ui::rect(left + 2.0f, y + 3.0f, size, size, ui::withAlpha(ui::ShadowBase, 0x40));
+                const art::Image *image = trackArt(all[index]);
+                if (image != nullptr) {
+                    art::draw(*image, left, y, size, size);
+                } else {
+                    ui::rect(left, y, size, size, ui::Sheet);
+                    ui::icon(Icon::Note, x, FlowCenterY, size * 0.45f, ui::Line, ui::Sheet);
+                }
+                if (ad > 0.05f) ui::rect(left, y, size, size, ui::withAlpha(ui::ShadowBase, u8(std::min(160.0f, 48.0f + ad * 40.0f))));
                 if (all[index] == nowTrack && ad < 0.5f) {
                     ui::roundRect(x - size / 2.0f + 6.0f, y + size - 20.0f, 60.0f, 14.0f, 7.0f, ui::DarkPill);
                     ui::equaliser(x - size / 2.0f + 12.0f, y + size - 18.0f, player.level(), ui::PillText, int(frame));
@@ -2691,6 +2730,7 @@ struct App::State {
         ui::rect(0, 0, BotW, BotH, ui::Dim);
         const int count = int(menu.size());
         const float h = 8.0f + count * MenuRowStep;
+        const float MenuY = menuTop();
         ui::roundRect(MenuX, MenuY + 2.0f, MenuW, h, 8.0f, ui::withAlpha(ui::ShadowBase, 0x30));
         ui::roundRect(MenuX, MenuY, MenuW, h, 8.0f, ui::Sheet);
         for (int i = 0; i < count; ++i) {
@@ -2701,7 +2741,7 @@ struct App::State {
             ui::text(menu[i].label, MenuX + 10.0f, y + 8.0f, 12.0f, fg, ui::Align::Left, MenuW - 50.0f);
             ui::icon(menu[i].icon, MenuX + MenuW - 15.0f, y + MenuRowH / 2.0f, 12.0f, focused ? ui::BlueText : ui::Meta, focused ? ui::BlueTint : ui::Sheet);
         }
-        ui::roundButton(MenuX + MenuW + 20.0f, MenuY + 12.0f, 11.0f, Icon::Close, true);
+        ui::roundButton(MenuX + MenuW + 20.0f, MenuY + 12.0f, 11.0f, Icon::Close, false);
     }
 
     void drawDialog()
