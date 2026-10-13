@@ -420,8 +420,16 @@ struct App::State {
     // the console is away, start them again when it comes back. A thread
     // that keeps working while the app is suspended can starve the HOME
     // Menu, and the DSP is handed over anyway.
+    // Playback is stopped outright, not paused: the decode thread is joined
+    // and the channel reset, so the DSP goes to sleep with nothing queued
+    // and no second-core thread touching it. The song picks up where it was
+    // on the next frame after the console comes back.
     aptHookCookie aptCookie{};
     bool resumeAfterSystem = false;
+    double resumePosition = 0.0;
+    volatile bool resumePending = false;
+    volatile bool handoverActive = false;
+    u64 handoverStarted = 0;
     static void aptHookEntry(APT_HookType hook, void *param)
     {
         State *self = static_cast<State *>(param);
@@ -432,22 +440,82 @@ struct App::State {
             self->scanPaused = true;
             art::setPaused(true);
             self->resumeAfterSystem = self->player.playing();
-            if (self->resumeAfterSystem) self->player.pause();
-            platform::log("apt: handing the console over");
+            self->resumePosition = self->player.positionSeconds();
+            self->player.stop();
+            self->handoverStarted = osGetTime();
+            self->handoverActive = true;
+            platform::log("apt: playback stopped at %.1f s, handing the console over", self->resumePosition);
             break;
         case APTHOOK_ONRESTORE:
         case APTHOOK_ONWAKEUP:
-            platform::log("apt: %s", hook == APTHOOK_ONRESTORE ? "restore" : "wakeup");
+            self->handoverActive = false;
+            platform::log("apt: %s after %llu ms", hook == APTHOOK_ONRESTORE ? "restore" : "wakeup", (unsigned long long)(osGetTime() - self->handoverStarted));
             self->scanPaused = false;
             art::setPaused(false);
-            if (self->resumeAfterSystem) {
-                self->resumeAfterSystem = false;
-                self->player.resume();
-            }
+            if (self->resumeAfterSystem) self->resumePending = true;
             break;
         default:
             break;
         }
+    }
+
+    // Picks the song up again once the DSP is back (libctru wakes it after
+    // the restore hook, so this runs from the next frame, not the hook).
+    void resumeAfterHandover()
+    {
+        if (!resumePending) return;
+        resumePending = false;
+        resumeAfterSystem = false;
+        if (nowTrack < 0 || nowTrack >= int(library.tracks().size())) return;
+        const core::Track &t = library.tracks()[nowTrack];
+        std::string error;
+        if (!player.play(t.path, t.format, error)) {
+            platform::log("apt: could not resume %s (%s)", t.path.c_str(), error.c_str());
+            return;
+        }
+        if (resumePosition > 1.0) player.seek(resumePosition);
+        platform::log("apt: resumed %s at %.1f s", t.path.c_str(), resumePosition);
+    }
+
+    // A low-priority thread that notes, every two seconds, that the app is
+    // still waiting for the system to take or give back the console. If a
+    // freeze leaves these lines behind, the process and the SD card were
+    // alive and the main thread was stuck in the hand-over; if it leaves
+    // none, the whole system stopped.
+    Thread watchdogThread = nullptr;
+    volatile bool watchdogRunning = false;
+    static void watchdogEntry(void *arg)
+    {
+        State *self = static_cast<State *>(arg);
+        u64 lastNoted = 0;
+        while (self->watchdogRunning) {
+            svcSleepThread(500 * 1000 * 1000);
+            if (!self->handoverActive) {
+                lastNoted = 0;
+                continue;
+            }
+            const u64 elapsed = osGetTime() - self->handoverStarted;
+            if (elapsed >= 2000 && elapsed - lastNoted >= 2000) {
+                lastNoted = elapsed;
+                platform::log("apt: still handing over after %llu ms", (unsigned long long)elapsed);
+            }
+        }
+    }
+    void startWatchdog()
+    {
+        watchdogRunning = true;
+        s32 prio = 0;
+        svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
+        watchdogThread = threadCreate(watchdogEntry, this, 16 * 1024, prio + 2, -2, false);
+        if (watchdogThread == nullptr) watchdogRunning = false;
+    }
+    void stopWatchdog()
+    {
+        if (watchdogThread == nullptr) return;
+        watchdogRunning = false;
+        threadJoin(watchdogThread, U64_MAX);
+        threadFree(watchdogThread);
+        watchdogThread = nullptr;
     }
 
     // A scripted input walk for crash testing in the emulator: when
@@ -1147,6 +1215,7 @@ struct App::State {
     {
         ++frame;
         artLoadedThisFrame = false;
+        resumeAfterHandover();
         stepScan();
         pollArt();
         if (frame % 60 == 1) refreshStatus();
@@ -2694,12 +2763,14 @@ App::App() : s_(new State)
     art::startLoader();
     s_->refreshStatus();
     aptHook(&s_->aptCookie, State::aptHookEntry, s_);
+    s_->startWatchdog();
     s_->startScan();
 }
 
 App::~App()
 {
     aptUnhook(&s_->aptCookie);
+    s_->stopWatchdog();
     s_->player.stop();
     s_->finishScanThread();
     art::stopLoader();

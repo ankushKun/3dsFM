@@ -61,7 +61,6 @@ void init()
 {
     makeDirectories(AppDir);
     ptmReady = R_SUCCEEDED(ptmuInit());
-    lcdReady = R_SUCCEEDED(gspLcdInit());
     // The log survives a restart so a freeze or crash leaves its last lines
     // behind; it starts over once it grows past a quarter megabyte.
     const std::string logPath = std::string(AppDir) + "/log.txt";
@@ -231,7 +230,15 @@ bool lidClosed()
 
 void setBacklights(bool on)
 {
-    if (!lcdReady || on == backlightsOn) return;
+    if (on == backlightsOn) return;
+    // The gsp::Lcd service is only opened the first time the backlights
+    // have to go off (lid closed with music playing), so the app holds no
+    // session on it the rest of the time.
+    if (!lcdReady) {
+        if (on) return;
+        lcdReady = R_SUCCEEDED(gspLcdInit());
+        if (!lcdReady) return;
+    }
     if (on) GSPLCD_PowerOnAllBacklights(); else GSPLCD_PowerOffAllBacklights();
     backlightsOn = on;
 }
