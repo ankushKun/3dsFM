@@ -21,7 +21,7 @@ constexpr int RecentSamples = 1024;
 constexpr size_t DecodeStackSize = 192 * 1024;
 
 bool dspReady = false;
-bool useSecondCore = true;
+bool useSecondCore = false;
 
 } // namespace
 

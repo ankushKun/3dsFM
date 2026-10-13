@@ -2,6 +2,7 @@
 
 #include <3ds.h>
 
+#include <algorithm>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
@@ -310,6 +311,8 @@ void Settings::load()
         else if (key == "shuffle") shuffle = value == "1";
         else if (key == "repeat") repeat = std::atoi(value.c_str());
         else if (key == "visualizer_style") visualizerStyle = std::atoi(value.c_str());
+        else if (key == "songs_view") songsView = std::max(0, std::min(2, std::atoi(value.c_str())));
+        else if (key == "second_core") secondCore = value == "1";
     }
     std::fclose(f);
 }
@@ -318,8 +321,8 @@ void Settings::save() const
 {
     FILE *f = std::fopen((std::string(AppDir) + "/settings.ini").c_str(), "w");
     if (f == nullptr) return;
-    std::fprintf(f, "music_folder=%s\nkeep_playing_lid_closed=%d\nart_on_top_screen=%d\ndark_mode=%d\nshuffle=%d\nrepeat=%d\nvisualizer_style=%d\n",
-                 musicFolder.c_str(), keepPlayingLidClosed ? 1 : 0, artOnTopScreen ? 1 : 0, darkMode ? 1 : 0, shuffle ? 1 : 0, repeat, visualizerStyle);
+    std::fprintf(f, "music_folder=%s\nkeep_playing_lid_closed=%d\nart_on_top_screen=%d\ndark_mode=%d\nshuffle=%d\nrepeat=%d\nvisualizer_style=%d\nsongs_view=%d\nsecond_core=%d\n",
+                 musicFolder.c_str(), keepPlayingLidClosed ? 1 : 0, artOnTopScreen ? 1 : 0, darkMode ? 1 : 0, shuffle ? 1 : 0, repeat, visualizerStyle, songsView, secondCore ? 1 : 0);
     std::fclose(f);
 }
 

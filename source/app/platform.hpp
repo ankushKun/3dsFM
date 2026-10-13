@@ -52,6 +52,8 @@ struct Settings {
     bool shuffle = false;
     int repeat = 0; // 0 off, 1 all, 2 one
     int visualizerStyle = 0;
+    int songsView = 0;       // 0 cover flow, 1 grid, 2 list
+    bool secondCore = false; // decode on the second core (New 3DS)
     void load();
     void save() const;
 };
