@@ -384,6 +384,8 @@ struct App::State {
     std::atomic<bool> scanAbort{false};
     std::atomic<int> scanProgress{0};
     std::atomic<int> scanTotal{0};
+    std::atomic<int> junkProgress{0};
+    std::atomic<int> junkTotal{0};
     bool scanFull = false; // Settings > Rescan: read every file again
     static void scanEntry(void *arg)
     {
@@ -391,14 +393,8 @@ struct App::State {
         core::Library &lib = *self->scanLibrary;
         lib.collect(self->settings.musicFolder, platform::listDirectory);
         self->scanTotal = lib.collectedCount();
-        platform::log("scan: %d files under %s", lib.collectedCount(), self->settings.musicFolder.c_str());
-        // Desktop clutter next to the music (macOS "._" resource forks and
-        // .DS_Store, Windows Thumbs.db) is deleted so it stops piling up.
-        int removed = 0;
-        for (const std::string &junk : lib.junkFiles()) {
-            if (std::remove(junk.c_str()) == 0) ++removed;
-        }
-        if (!lib.junkFiles().empty()) platform::log("scan: removed %d of %d junk files", removed, int(lib.junkFiles().size()));
+        self->junkTotal = int(lib.junkFiles().size());
+        platform::log("scan: %d files and %d junk files under %s", lib.collectedCount(), int(lib.junkFiles().size()), self->settings.musicFolder.c_str());
         if (!self->scanFull && !self->scanKnown.empty()) lib.useIndex(self->scanKnown);
         int fresh = 0; // tags read since the index was last written
         int reused = 0;
@@ -421,6 +417,19 @@ struct App::State {
             const bool saved = platform::writeTextFile(platform::IndexPath, core::encodeIndex(lib.tracks(), lib.looseCovers()));
             platform::log("scan: %d tracks, %d from the index, index %s", int(lib.tracks().size()), lib.reusedCount(), saved ? "saved" : "NOT saved");
         }
+        // Desktop clutter next to the music (macOS "._" resource forks and
+        // .DS_Store, Windows Thumbs.db) is deleted so it stops piling up:
+        // one file at a time, after the music is read, and never while the
+        // console is away, since every delete is an SD card write that the
+        // HOME Menu would have to wait behind.
+        int removed = 0;
+        for (const std::string &junk : lib.junkFiles()) {
+            while (self->scanPaused && !self->scanAbort) svcSleepThread(50 * 1000 * 1000);
+            if (self->scanAbort) break;
+            if (std::remove(junk.c_str()) == 0) ++removed;
+            self->junkProgress = self->junkProgress + 1;
+        }
+        if (!lib.junkFiles().empty()) platform::log("scan: removed %d of %d junk files", removed, int(lib.junkFiles().size()));
         self->scanDone = true;
     }
 
@@ -707,7 +716,15 @@ struct App::State {
             } else {
                 library.loadFromIndex(settings.musicFolder, scanKnown, scanKnownCovers);
                 libraryFromIndex = true;
-                platform::log("index: %d tracks, %d albums, %d covers loaded", int(library.tracks().size()), int(library.albums().size()), int(scanKnownCovers.size()));
+                const int version = core::indexVersion(text);
+                platform::log("index: version %d, %d tracks, %d albums, %d covers loaded", version, int(library.tracks().size()), int(library.albums().size()), int(scanKnownCovers.size()));
+                if (version < core::currentIndexVersion()) {
+                    // Shown as it was, but every file is read again under
+                    // the newer rules; the result replaces it when done.
+                    platform::log("index: older than this scanner, reading every file again");
+                    scanKnown.clear();
+                    scanKnownCovers.clear();
+                }
             }
         }
         if (!libraryFromIndex) {
@@ -724,6 +741,8 @@ struct App::State {
         scanPaused = false;
         scanProgress = 0;
         scanTotal = 0;
+        junkProgress = 0;
+        junkTotal = 0;
         scanning = true;
         // Two steps below the UI thread, under libctru's APT handler thread,
         // so the HOME button is never waiting on a tag read.
@@ -742,6 +761,12 @@ struct App::State {
 
     int scanCollected() const { return scanTotal; }
     int scanScanned() const { return scanProgress; }
+    // "Reading · 12 of 600", or "Tidying up · 3 of 40" once the music is read.
+    std::string scanProgressText(const char *reading) const
+    {
+        if (scanTotal > 0 && scanProgress >= scanTotal && junkTotal > 0) return "Tidying up · " + std::to_string(junkProgress) + " of " + std::to_string(junkTotal);
+        return std::string(reading) + std::to_string(scanProgress) + " of " + std::to_string(scanTotal);
+    }
 
     void stepScan()
     {
@@ -1846,8 +1871,7 @@ struct App::State {
         // pass false and keep the corner; the scan state shows on Home.
         const float ty = BandTopY - 5.0f; // 10 px text centred on the band
         if (scanning && withRecent) {
-            const std::string verb = library.tracks().empty() ? "Scanning · " : "Checking · ";
-            ui::text(verb + std::to_string(scanScanned()) + " of " + std::to_string(scanCollected()), BoxX, ty, 10.0f, ui::Meta);
+            ui::text(scanProgressText(library.tracks().empty() ? "Scanning · " : "Checking · "), BoxX, ty, 10.0f, ui::Meta);
         } else if (withRecent) {
             const int n = int(library.albums().size());
             float x = BoxX;
@@ -2388,7 +2412,7 @@ struct App::State {
                 if (!scanning) {
                     drawEmptyCard(Icon::Note, "No music yet", "Copy albums to " + settings.musicFolder, "then rescan from Settings.");
                 } else if (scanCollected() > 0) {
-                    drawEmptyCard(Icon::Note, "Reading your music", std::to_string(scanScanned()) + " of " + std::to_string(scanCollected()) + " files",
+                    drawEmptyCard(Icon::Note, "Reading your music", scanProgressText("") + " files",
                                   "The first time takes a while. After that it is instant.");
                 } else {
                     drawEmptyCard(Icon::Note, "Looking for music", "in " + settings.musicFolder);

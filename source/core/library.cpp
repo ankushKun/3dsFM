@@ -343,6 +343,8 @@ void Library::loadFromIndex(const std::string &root, const std::vector<Track> &t
 namespace {
 
 const char *const IndexHeader = "3dsFM library index 3";
+const char *const IndexHeaderStem = "3dsFM library index ";
+const int IndexVersion = 3;
 
 std::string indexField(const std::string &s)
 {
@@ -383,6 +385,19 @@ std::string encodeIndex(const std::vector<Track> &tracks, const std::vector<Cove
     return out;
 }
 
+int indexVersion(const std::string &text)
+{
+    const std::string stem = IndexHeaderStem;
+    if (text.rfind(stem, 0) != 0) return 0;
+    const int version = std::atoi(text.c_str() + stem.size());
+    return version > 0 ? version : 0;
+}
+
+int currentIndexVersion()
+{
+    return IndexVersion;
+}
+
 bool decodeIndex(const std::string &text, std::vector<Track> &tracks)
 {
     std::vector<Cover> covers;
@@ -404,7 +419,7 @@ bool decodeIndex(const std::string &text, std::vector<Track> &tracks, std::vecto
         return true;
     };
     std::string line;
-    if (!nextLine(line) || line != IndexHeader) return false;
+    if (!nextLine(line) || indexVersion(line) < 1 || indexVersion(line) > IndexVersion) return false;
     while (nextLine(line)) {
         if (line.empty()) continue;
         std::vector<std::string> fields;

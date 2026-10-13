@@ -307,10 +307,16 @@ TEST("the library rebuilds itself from the index alone, covers included")
     // An unchanged library encodes to the same bytes, which is how the app
     // knows a background check found nothing new.
     CHECK_EQ(encodeIndex(fromIndex.tracks(), fromIndex.looseCovers()), text);
-    // An index from an older scanner is refused, so its files are read again.
+    // An index from an older scanner still loads, and says it is old, so the
+    // app can show it while it reads every file again.
+    CHECK_EQ(indexVersion(text), currentIndexVersion());
     std::string old = text;
     old.replace(0, std::string("3dsFM library index 3").size(), "3dsFM library index 2");
-    CHECK(!decodeIndex(old, tracks, covers));
+    CHECK_EQ(indexVersion(old), 2);
+    CHECK(decodeIndex(old, tracks, covers));
+    CHECK_EQ(tracks.size(), first.tracks().size());
+    CHECK_EQ(indexVersion("not an index"), 0);
+    CHECK(!decodeIndex("3dsFM library index 99\n", tracks, covers));
 }
 
 TEST("video-site noise comes off titles and file names split into artist and title")

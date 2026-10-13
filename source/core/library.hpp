@@ -70,6 +70,11 @@ using Cover = std::pair<std::string, std::string>;
 std::string encodeIndex(const std::vector<Track> &tracks, const std::vector<Cover> &covers = {});
 bool decodeIndex(const std::string &text, std::vector<Track> &tracks, std::vector<Cover> &covers);
 bool decodeIndex(const std::string &text, std::vector<Track> &tracks);
+// The format version an index was written with (0 when it is not one), and
+// the version this scanner writes. An older index still shows the library
+// while every file is read again under the newer rules.
+int indexVersion(const std::string &text);
+int currentIndexVersion();
 
 class Library {
 public:
