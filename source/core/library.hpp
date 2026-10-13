@@ -54,7 +54,10 @@ struct Album {
     // A folder of songs by different artists is a playlist, not an album:
     // it has no single cover and is shown as a mosaic of its songs' art.
     bool isPlaylist = false;
-    // For a playlist: up to four tracks with distinct covers, for the mosaic.
+    // Loose songs straight in the music folder, one per album, gathered
+    // under their artist: "Singles". Drawn as a mosaic like a playlist.
+    bool isSingles = false;
+    // For a playlist or singles: up to four tracks with distinct covers.
     std::vector<int> mosaicTracks;
 };
 
@@ -84,7 +87,10 @@ public:
     void clear();
     // The whole library straight from the index, with no folder listing and
     // no tag reads: the state of the last scan, ready to browse and play.
-    void loadFromIndex(const std::vector<Track> &tracks, const std::vector<Cover> &covers);
+    void loadFromIndex(const std::string &root, const std::vector<Track> &tracks, const std::vector<Cover> &covers);
+    // Files collect() found that are not music and only clutter the card:
+    // macOS "._name" resource forks and .DS_Store, Windows Thumbs.db.
+    const std::vector<std::string> &junkFiles() const { return junk_; }
 
     int collectedCount() const { return int(pending_.size()); }
     int scannedCount() const { return scanned_; }
@@ -107,7 +113,8 @@ public:
     int totalDurationSeconds() const;
 
 private:
-    void addTrack(Track track, const std::string &folder);
+    std::string root_;
+    std::vector<std::string> junk_;
     struct Pending {
         std::string path;
         std::string folder;
@@ -123,7 +130,14 @@ private:
     std::vector<Cover> looseCovers_;
 };
 
-// Helpers shared with the UI.
+// Helpers shared with the UI and the tests.
+// Drops the noise video sites put in titles: "(Official Video)", "[Lyrics]",
+// "[HD]", a trailing "- Official Audio", an 11-character video id in brackets.
+std::string cleanTitle(const std::string &title);
+// "Artist - Title" (also with an en or em dash) into its two halves.
+bool splitArtistTitle(const std::string &text, std::string &artist, std::string &title);
+// A file that is desktop clutter rather than content.
+bool isJunkFile(const std::string &name);
 std::string fileStem(const std::string &path);
 std::string parentFolder(const std::string &path);
 std::string baseName(const std::string &path);

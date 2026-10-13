@@ -289,7 +289,7 @@ TEST("the library rebuilds itself from the index alone, covers included")
     CHECK_EQ(covers.size(), first.looseCovers().size());
 
     Library fromIndex;
-    fromIndex.loadFromIndex(tracks, covers);
+    fromIndex.loadFromIndex("sdmc:/Music", tracks, covers);
     CHECK_EQ(fromIndex.tracks().size(), first.tracks().size());
     CHECK_EQ(fromIndex.albums().size(), first.albums().size());
     CHECK(!fromIndex.scanning());
@@ -307,9 +307,113 @@ TEST("the library rebuilds itself from the index alone, covers included")
     // An unchanged library encodes to the same bytes, which is how the app
     // knows a background check found nothing new.
     CHECK_EQ(encodeIndex(fromIndex.tracks(), fromIndex.looseCovers()), text);
-    // A version 1 index, without cover lines, still loads.
-    std::string v1 = text;
-    v1.replace(0, std::string("3dsFM library index 2").size(), "3dsFM library index 1");
-    CHECK(decodeIndex(v1, tracks, covers));
-    CHECK_EQ(tracks.size(), first.tracks().size());
+    // An index from an older scanner is refused, so its files are read again.
+    std::string old = text;
+    old.replace(0, std::string("3dsFM library index 3").size(), "3dsFM library index 2");
+    CHECK(!decodeIndex(old, tracks, covers));
+}
+
+TEST("video-site noise comes off titles and file names split into artist and title")
+{
+    CHECK_EQ(cleanTitle("Gimme Chocolate!! (Official Music Video)"), std::string("Gimme Chocolate!!"));
+    CHECK_EQ(cleanTitle("She Looks So Perfect [Official Video] [HD]"), std::string("She Looks So Perfect"));
+    CHECK_EQ(cleanTitle("Doki Doki Morning - Official Audio"), std::string("Doki Doki Morning"));
+    CHECK_EQ(cleanTitle("Never Gonna Give You Up [dQw4w9WgXcQ]"), std::string("Never Gonna Give You Up"));
+    CHECK_EQ(cleanTitle("Not Tomorrow (Long Version)"), std::string("Not Tomorrow (Long Version)"));
+    CHECK_EQ(cleanTitle("Promise (Reprise)"), std::string("Promise (Reprise)"));
+    CHECK_EQ(cleanTitle("Song (feat. Someone) (Lyrics)"), std::string("Song (feat. Someone)"));
+    std::string artist;
+    std::string title;
+    CHECK(splitArtistTitle("BABYMETAL - Doki Doki Morning", artist, title));
+    CHECK_EQ(artist, std::string("BABYMETAL"));
+    CHECK_EQ(title, std::string("Doki Doki Morning"));
+    CHECK(splitArtistTitle("Miki Matsubara \xe2\x80\x93 Stay With Me", artist, title));
+    CHECK_EQ(artist, std::string("Miki Matsubara"));
+    CHECK(!splitArtistTitle("My War Full English Cover By_ Riverdude", artist, title));
+    CHECK(isJunkFile("._Song.mp3"));
+    CHECK(isJunkFile(".DS_Store"));
+    CHECK(isJunkFile("Thumbs.db"));
+    CHECK(!isJunkFile("Song.mp3"));
+}
+
+TEST("loose songs in the music folder become per-artist singles and junk is listed")
+{
+    FakeFs fs;
+    fs.dirs["sdmc:/Music"] = {
+        {"5 Seconds of Summer - She Looks So Perfect (Official Video).mp3", false},
+        {"._5 Seconds of Summer - She Looks So Perfect (Official Video).mp3", false},
+        {"BABYMETAL - Gimme Chocolate [dQw4w9WgXcQ].mp3", false},
+        {"BABYMETAL - Megitsune.mp3", false},
+        {"My War Full English Cover By_ Riverdude.mp3", false},
+        {".DS_Store", false},
+        {"Miki Matsubara", true},
+    };
+    fs.dirs["sdmc:/Music/Miki Matsubara"] = {{"Pocket Park", true}};
+    fs.dirs["sdmc:/Music/Miki Matsubara/Pocket Park"] = {{"01 - Mayonaka no Door.mp3", false}};
+    Tags gimme = tag("Gimme Chocolate!! (Official Music Video)", "BABYMETAL", "", 0, 200);
+    gimme.picture.data = {1, 2, 3};
+    fs.tags["sdmc:/Music/BABYMETAL - Gimme Chocolate [dQw4w9WgXcQ].mp3"] = gimme;
+    Tags megitsune = tag("Megitsune", "BABYMETAL", "BABYMETAL", 1, 210);
+    megitsune.picture.data = {4, 5, 6};
+    fs.tags["sdmc:/Music/BABYMETAL - Megitsune.mp3"] = megitsune;
+    fs.tags["sdmc:/Music/Miki Matsubara/Pocket Park/01 - Mayonaka no Door.mp3"] = tag("Mayonaka no Door", "Miki Matsubara", "Pocket Park", 1, 257, "1980");
+
+    Library lib;
+    lib.collect("sdmc:/Music", fs.lister());
+    CHECK_EQ(lib.collectedCount(), 5);
+    CHECK_EQ(lib.junkFiles().size(), size_t(2));
+    while (lib.step(fs.reader(), 2)) {
+    }
+    lib.build();
+    CHECK_EQ(lib.tracks().size(), size_t(5));
+
+    std::map<std::string, const Album *> byTitleArtist;
+    for (const Album &a : lib.albums()) byTitleArtist[a.title + "|" + a.artist] = &a;
+    CHECK_EQ(lib.albums().size(), size_t(4));
+    const Album *babymetal = byTitleArtist["Singles|BABYMETAL"];
+    CHECK(babymetal != nullptr);
+    if (babymetal != nullptr) {
+        CHECK(babymetal->isSingles);
+        CHECK(!babymetal->isPlaylist);
+        CHECK_EQ(babymetal->tracks.size(), size_t(2));
+        CHECK_EQ(babymetal->mosaicTracks.size(), size_t(2));
+        CHECK(babymetal->artIsEmbedded);
+        const Track *g = nullptr;
+        for (int t : babymetal->tracks) if (lib.tracks()[t].path.find("Gimme") != std::string::npos) g = &lib.tracks()[t];
+        CHECK(g != nullptr);
+        if (g != nullptr) {
+            CHECK_EQ(g->title, std::string("Gimme Chocolate!!"));
+            CHECK_EQ(g->album, std::string("Gimme Chocolate!!"));
+        }
+    }
+    const Album *fiveSos = byTitleArtist["Singles|5 Seconds of Summer"];
+    CHECK(fiveSos != nullptr);
+    if (fiveSos != nullptr) {
+        CHECK_EQ(lib.tracks()[fiveSos->tracks[0]].title, std::string("She Looks So Perfect"));
+        CHECK_EQ(lib.tracks()[fiveSos->tracks[0]].artist, std::string("5 Seconds of Summer"));
+    }
+    const Album *unknown = byTitleArtist["Singles|Unknown artist"];
+    CHECK(unknown != nullptr);
+    if (unknown != nullptr) CHECK_EQ(lib.tracks()[unknown->tracks[0]].title, std::string("My War Full English Cover By_ Riverdude"));
+    const Album *pocket = byTitleArtist["Pocket Park|Miki Matsubara"];
+    CHECK(pocket != nullptr);
+    if (pocket != nullptr) CHECK(!pocket->isSingles);
+
+    // The artists list has one entry per artist and singles sort after albums.
+    const std::vector<std::string> artists = lib.artists();
+    CHECK_EQ(artists.size(), size_t(4));
+
+    // Reloading from the index gives the same collections.
+    std::vector<Track> tracks;
+    std::vector<Cover> covers;
+    CHECK(decodeIndex(encodeIndex(lib.tracks(), lib.looseCovers()), tracks, covers));
+    Library again;
+    again.loadFromIndex("sdmc:/Music", tracks, covers);
+    CHECK_EQ(again.albums().size(), lib.albums().size());
+    for (size_t i = 0; i < lib.albums().size(); ++i) {
+        CHECK_EQ(again.albums()[i].key, lib.albums()[i].key);
+        CHECK_EQ(again.albums()[i].title, lib.albums()[i].title);
+        CHECK_EQ(again.albums()[i].tracks.size(), lib.albums()[i].tracks.size());
+    }
+    CHECK_EQ(encodeIndex(again.tracks(), again.looseCovers()), encodeIndex(lib.tracks(), lib.looseCovers()));
 }

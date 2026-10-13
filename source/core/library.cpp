@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <map>
 
 namespace core {
@@ -48,6 +49,61 @@ std::string fileStem(const std::string &path)
 
 namespace {
 
+std::string trimSpaces(const std::string &s)
+{
+    size_t a = 0;
+    size_t b = s.size();
+    while (a < b && (s[a] == ' ' || s[a] == '\t')) ++a;
+    while (b > a && (s[b - 1] == ' ' || s[b - 1] == '\t')) --b;
+    return s.substr(a, b - a);
+}
+
+// Words that, on their own inside brackets or after a final dash, say
+// nothing about the song.
+bool isNoiseWord(const std::string &w)
+{
+    static const char *const words[] = {"official", "oficial", "video", "videoclip", "music", "audio", "lyric", "lyrics", "hd", "hq", "4k",
+                                        "1080p", "720p", "mv", "m/v", "visualizer", "visualiser", "clip", "version", "ver", "full", "song",
+                                        "with", "subtitles", "sub", "subs", "eng", "english", "cc", "the", "from", "ost", "stream", "quality"};
+    for (const char *x : words) {
+        if (w == x) return true;
+    }
+    return false;
+}
+
+// True when every word of the text is noise, or it is a video id.
+bool isNoise(const std::string &text)
+{
+    const std::string t = toLowerAscii(trimSpaces(text));
+    if (t.empty()) return false;
+    if (t.size() == 11) {
+        bool id = true;
+        for (char c : t) {
+            if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-')) id = false;
+        }
+        // An id only counts as noise when it has a digit or an underscore or
+        // a dash in it; a plain eleven-letter word is just a word.
+        if (id && t.find_first_of("0123456789_-") != std::string::npos) return true;
+    }
+    // "(version)" and "(full)" alone are meaningful; they count as noise only
+    // next to other noise, such as "(Full Video Version)".
+    bool sawStrongNoise = false;
+    size_t start = 0;
+    int words = 0;
+    while (start <= t.size()) {
+        size_t end = t.find_first_of(" -/", start);
+        if (end == std::string::npos) end = t.size();
+        const std::string w = t.substr(start, end - start);
+        if (!w.empty()) {
+            ++words;
+            if (!isNoiseWord(w)) return false;
+            if (w != "version" && w != "ver" && w != "full" && w != "the" && w != "with" && w != "from" && w != "song") sawStrongNoise = true;
+        }
+        start = end + 1;
+    }
+    return words > 0 && sawStrongNoise;
+}
+
 bool isCoverFile(const std::string &name)
 {
     const std::string n = toLowerAscii(name);
@@ -60,7 +116,9 @@ bool isCoverFile(const std::string &name)
 }
 
 // "03 - Title" or "03. Title" or "03 Title": strips a leading track number.
-std::string stripLeadingNumber(const std::string &stem, int &number)
+// With punctuationOnly, a number followed by just a space stays, so a loose
+// "5 Seconds of Summer - ..." or "21 Pilots - ..." keeps its name.
+std::string stripLeadingNumber(const std::string &stem, int &number, bool punctuationOnly = false)
 {
     size_t i = 0;
     int value = 0;
@@ -70,11 +128,76 @@ std::string stripLeadingNumber(const std::string &stem, int &number)
     }
     if (i == 0 || i >= stem.size()) return stem;
     size_t j = i;
-    while (j < stem.size() && (stem[j] == ' ' || stem[j] == '-' || stem[j] == '.' || stem[j] == '_')) ++j;
+    bool punctuation = false;
+    while (j < stem.size() && (stem[j] == ' ' || stem[j] == '-' || stem[j] == '.' || stem[j] == '_')) {
+        if (stem[j] != ' ') punctuation = true;
+        ++j;
+    }
     if (j == i || j >= stem.size()) return stem;
+    if (punctuationOnly && !punctuation) return stem;
     number = value;
     return stem.substr(j);
 }
+
+} // namespace
+
+std::string cleanTitle(const std::string &title)
+{
+    std::string out = title;
+    // Bracketed groups that are pure noise.
+    for (int pass = 0; pass < 6; ++pass) {
+        bool changed = false;
+        for (const char *pair : {"()", "[]", "{}"}) {
+            size_t close = out.find(pair[1]);
+            while (close != std::string::npos) {
+                const size_t open = out.rfind(pair[0], close);
+                if (open != std::string::npos && isNoise(out.substr(open + 1, close - open - 1))) {
+                    out.erase(open, close - open + 1);
+                    changed = true;
+                    break;
+                }
+                close = out.find(pair[1], close + 1);
+            }
+        }
+        if (!changed) break;
+    }
+    // A final " - Official Video" style tail.
+    for (const char *dash : {" - ", " \xe2\x80\x93 ", " \xe2\x80\x94 ", " | "}) {
+        const size_t at = out.rfind(dash);
+        if (at != std::string::npos && at > 0 && isNoise(out.substr(at + std::strlen(dash)))) out.erase(at);
+    }
+    // Tidy the spaces the removals leave behind.
+    std::string tidy;
+    for (char c : out) {
+        if ((c == ' ' || c == '\t') && (tidy.empty() || tidy.back() == ' ')) continue;
+        tidy += c == '\t' ? ' ' : c;
+    }
+    return trimSpaces(tidy);
+}
+
+bool splitArtistTitle(const std::string &text, std::string &artist, std::string &title)
+{
+    for (const char *dash : {" - ", " \xe2\x80\x93 ", " \xe2\x80\x94 "}) {
+        const size_t at = text.find(dash);
+        if (at == std::string::npos) continue;
+        const std::string a = trimSpaces(text.substr(0, at));
+        const std::string t = trimSpaces(text.substr(at + std::strlen(dash)));
+        if (a.empty() || t.empty()) continue;
+        artist = a;
+        title = t;
+        return true;
+    }
+    return false;
+}
+
+bool isJunkFile(const std::string &name)
+{
+    if (name.rfind("._", 0) == 0) return true;
+    const std::string n = toLowerAscii(name);
+    return n == ".ds_store" || n == "thumbs.db" || n == "desktop.ini";
+}
+
+namespace {
 
 bool naturalLess(const std::string &a, const std::string &b)
 {
@@ -86,6 +209,7 @@ bool naturalLess(const std::string &a, const std::string &b)
 void Library::clear()
 {
     pending_.clear();
+    junk_.clear();
     index_.clear();
     scanned_ = 0;
     reused_ = 0;
@@ -97,6 +221,7 @@ void Library::clear()
 void Library::collect(const std::string &root, const Lister &lister)
 {
     clear();
+    root_ = root;
     std::vector<std::string> stack{root};
     int visited = 0;
     while (!stack.empty() && visited < 2000) {
@@ -106,8 +231,13 @@ void Library::collect(const std::string &root, const Lister &lister)
         std::vector<Entry> entries = lister(dir);
         std::sort(entries.begin(), entries.end(), [](const Entry &a, const Entry &b) { return naturalLess(a.name, b.name); });
         for (const Entry &e : entries) {
-            if (e.name.empty() || e.name[0] == '.') continue;
+            if (e.name.empty()) continue;
             const std::string path = dir + "/" + e.name;
+            if (!e.isDirectory && isJunkFile(e.name)) {
+                junk_.push_back(path);
+                continue;
+            }
+            if (e.name[0] == '.') continue;
             if (e.isDirectory) {
                 stack.push_back(path);
                 continue;
@@ -151,49 +281,55 @@ bool Library::step(const TagReader &reader, int count)
             if (t.artHash != 0 && tags.pictureBytes != 0) t.artHash ^= tags.pictureBytes * 1099511628211ull;
             t.year = tags.year;
 
+            // The title and artist: from the tags, else from a file name of
+            // the "Artist - Title" kind, else the file name as the title.
+            // Either way the video-site noise comes off the title.
+            const bool loose = p.folder == root_;
             int numberFromName = 0;
-            const std::string stemTitle = stripLeadingNumber(fileStem(p.fileName), numberFromName);
-            t.title = tags.title.empty() ? stemTitle : tags.title;
+            const std::string stem = stripLeadingNumber(fileStem(p.fileName), numberFromName, loose);
+            std::string title = cleanTitle(tags.title);
+            std::string artist = trimSpaces(tags.artist);
+            std::string a;
+            std::string b;
+            if (artist.empty() && splitArtistTitle(title, a, b)) {
+                artist = a;
+                title = cleanTitle(b);
+            }
+            if ((title.empty() || artist.empty()) && splitArtistTitle(stem, a, b)) {
+                if (artist.empty()) artist = a;
+                if (title.empty()) title = cleanTitle(b);
+            }
+            if (title.empty()) title = cleanTitle(stem);
+            if (title.empty()) title = stem;
+            t.title = title;
             if (t.trackNumber == 0) t.trackNumber = numberFromName;
 
+            // A loose file sits straight in the music folder; the folder
+            // names say nothing about it. In a subfolder the folder is the
+            // album and its parent the artist, the usual Artist/Album layout.
             const std::string folderName = baseName(p.folder);
             const std::string parentName = baseName(parentFolder(p.folder));
-            t.album = tags.album.empty() ? folderName : tags.album;
-            t.artist = tags.artist.empty() ? (parentName.empty() ? "Unknown artist" : parentName) : tags.artist;
-            t.albumArtist = tags.albumArtist.empty() ? t.artist : tags.albumArtist;
+            if (artist.empty()) artist = (loose || parentName.empty() || parentName.back() == ':') ? "Unknown artist" : parentName;
+            t.artist = artist;
+            const std::string album = cleanTitle(tags.album);
+            t.album = !album.empty() ? album : loose ? t.title : folderName;
+            t.albumArtist = trimSpaces(tags.albumArtist).empty() ? t.artist : trimSpaces(tags.albumArtist);
             // Albums are grouped by name and folder, so two albums with the same
             // title by different artists in different folders stay apart, and a
-            // compilation in one folder stays together.
-            t.albumKey = toLowerAscii(t.album) + "|" + toLowerAscii(tags.album.empty() ? p.folder : t.albumArtist);
+            // compilation in one folder stays together. A loose single is its
+            // own album; build() gathers those under the artist.
+            t.albumKey = toLowerAscii(t.album) + "|" + toLowerAscii(album.empty() && !loose ? p.folder : t.albumArtist);
         }
-        addTrack(std::move(t), p.folder);
+        tracks_.push_back(std::move(t));
     }
     return scanned_ < int(pending_.size());
 }
 
-void Library::addTrack(Track track, const std::string &folder)
-{
-    tracks_.push_back(std::move(track));
-    // Remember the album's folder and year while we have the tags.
-    const Track &t = tracks_.back();
-    const int index = albumIndex(t.albumKey);
-    if (index < 0) {
-        Album a;
-        a.key = t.albumKey;
-        a.title = t.album;
-        a.artist = t.albumArtist;
-        a.year = t.year;
-        a.folder = folder;
-        albums_.push_back(std::move(a));
-    } else if (albums_[index].year.empty()) {
-        albums_[index].year = t.year;
-    }
-}
-
-void Library::loadFromIndex(const std::vector<Track> &tracks, const std::vector<Cover> &covers)
+void Library::loadFromIndex(const std::string &root, const std::vector<Track> &tracks, const std::vector<Cover> &covers)
 {
     clear();
-    for (const Track &t : tracks) addTrack(t, parentFolder(t.path));
+    root_ = root;
+    tracks_ = tracks;
     looseCovers_ = covers;
     build();
 }
@@ -202,11 +338,11 @@ void Library::loadFromIndex(const std::vector<Track> &tracks, const std::vector<
 // separated by tabs (tabs and newlines inside a field become spaces):
 // path, format, title, artist, album, album artist, year, album key, track
 // number, duration, has embedded art, art hash (hex). A cover file is a
-// line of "cover", its folder and its path. Version 1 had no cover lines.
+// line of "cover", its folder and its path. The version goes up whenever
+// the scanner reads files differently, so an old index is read again once.
 namespace {
 
-const char *const IndexHeader = "3dsFM library index 2";
-const char *const IndexHeaderV1 = "3dsFM library index 1";
+const char *const IndexHeader = "3dsFM library index 3";
 
 std::string indexField(const std::string &s)
 {
@@ -268,7 +404,7 @@ bool decodeIndex(const std::string &text, std::vector<Track> &tracks, std::vecto
         return true;
     };
     std::string line;
-    if (!nextLine(line) || (line != IndexHeader && line != IndexHeaderV1)) return false;
+    if (!nextLine(line) || line != IndexHeader) return false;
     while (nextLine(line)) {
         if (line.empty()) continue;
         std::vector<std::string> fields;
@@ -305,18 +441,40 @@ bool decodeIndex(const std::string &text, std::vector<Track> &tracks, std::vecto
 
 void Library::build()
 {
-    for (Album &a : albums_) {
-        a.tracks.clear();
-        a.durationSeconds = 0;
-        a.artPath.clear();
-        a.artIsEmbedded = false;
+    // A loose file (straight in the music folder) whose album holds only
+    // that one song is a single. An artist's singles share one "Singles"
+    // collection, so a folder of hundreds of downloaded songs becomes a
+    // tile per artist rather than a tile per song. The key is written back
+    // to the track, so the index remembers it and a reload builds the same
+    // library; the song keeps its own album name for the lists.
+    static const char *const SinglesPrefix = "singles|";
+    std::map<std::string, int> perKey;
+    for (const Track &t : tracks_) ++perKey[t.albumKey];
+    for (Track &t : tracks_) {
+        if (t.albumKey.rfind(SinglesPrefix, 0) == 0) continue;
+        if (perKey[t.albumKey] == 1 && parentFolder(t.path) == root_) t.albumKey = SinglesPrefix + toLowerAscii(t.albumArtist);
     }
+
+    albums_.clear();
+    std::map<std::string, int> byKey;
     for (int i = 0; i < int(tracks_.size()); ++i) {
-        const int index = albumIndex(tracks_[i].albumKey);
-        if (index < 0) continue;
-        Album &a = albums_[index];
+        const Track &t = tracks_[i];
+        auto it = byKey.find(t.albumKey);
+        if (it == byKey.end()) {
+            Album a;
+            a.key = t.albumKey;
+            a.isSingles = t.albumKey.rfind(SinglesPrefix, 0) == 0;
+            a.title = a.isSingles ? "Singles" : t.album;
+            a.artist = t.albumArtist;
+            a.year = a.isSingles ? "" : t.year;
+            a.folder = a.isSingles ? root_ : parentFolder(t.path);
+            albums_.push_back(std::move(a));
+            it = byKey.emplace(t.albumKey, int(albums_.size()) - 1).first;
+        }
+        Album &a = albums_[it->second];
+        if (a.year.empty() && !a.isSingles) a.year = t.year;
         a.tracks.push_back(i);
-        a.durationSeconds += tracks_[i].durationSeconds;
+        a.durationSeconds += t.durationSeconds;
     }
     for (Album &a : albums_) {
         std::sort(a.tracks.begin(), a.tracks.end(), [&](int x, int y) {
@@ -330,7 +488,7 @@ void Library::build()
             return naturalLess(tx.title, ty.title);
         });
         for (const auto &cover : looseCovers_) {
-            if (cover.first == a.folder) {
+            if (!a.isSingles && cover.first == a.folder) {
                 a.artPath = cover.second;
                 a.artIsEmbedded = false;
                 break;
@@ -348,7 +506,7 @@ void Library::build()
         // An artist of "Various" style folders: if every track has a
         // different artist, call the album's artist "Various artists".
         a.isPlaylist = false;
-        if (a.tracks.size() > 1) {
+        if (a.tracks.size() > 1 && !a.isSingles) {
             bool allSame = true;
             for (int t : a.tracks) {
                 if (toLowerAscii(tracks_[t].artist) != toLowerAscii(tracks_[a.tracks[0]].artist)) { allSame = false; break; }
@@ -359,7 +517,7 @@ void Library::build()
             }
         }
         a.mosaicTracks.clear();
-        if (a.isPlaylist) {
+        if (a.isPlaylist || a.isSingles) {
             std::vector<uint64_t> seen;
             for (int t : a.tracks) {
                 const Track &track = tracks_[t];
@@ -375,6 +533,7 @@ void Library::build()
         const std::string ax = toLowerAscii(x.artist);
         const std::string ay = toLowerAscii(y.artist);
         if (ax != ay) return ax < ay;
+        if (x.isSingles != y.isSingles) return y.isSingles; // an artist's singles come after their albums
         if (x.year != y.year) return x.year < y.year;
         return toLowerAscii(x.title) < toLowerAscii(y.title);
     });

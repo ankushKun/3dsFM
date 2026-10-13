@@ -392,6 +392,13 @@ struct App::State {
         lib.collect(self->settings.musicFolder, platform::listDirectory);
         self->scanTotal = lib.collectedCount();
         platform::log("scan: %d files under %s", lib.collectedCount(), self->settings.musicFolder.c_str());
+        // Desktop clutter next to the music (macOS "._" resource forks and
+        // .DS_Store, Windows Thumbs.db) is deleted so it stops piling up.
+        int removed = 0;
+        for (const std::string &junk : lib.junkFiles()) {
+            if (std::remove(junk.c_str()) == 0) ++removed;
+        }
+        if (!lib.junkFiles().empty()) platform::log("scan: removed %d of %d junk files", removed, int(lib.junkFiles().size()));
         if (!self->scanFull && !self->scanKnown.empty()) lib.useIndex(self->scanKnown);
         int fresh = 0; // tags read since the index was last written
         int reused = 0;
@@ -698,7 +705,7 @@ struct App::State {
                 scanKnown.clear();
                 scanKnownCovers.clear();
             } else {
-                library.loadFromIndex(scanKnown, scanKnownCovers);
+                library.loadFromIndex(settings.musicFolder, scanKnown, scanKnownCovers);
                 libraryFromIndex = true;
                 platform::log("index: %d tracks, %d albums, %d covers loaded", int(library.tracks().size()), int(library.albums().size()), int(scanKnownCovers.size()));
             }
@@ -1801,7 +1808,7 @@ struct App::State {
 
     void drawShowcaseArt(int albumIndex, int trackIndex = -1)
     {
-        const bool playlist = trackIndex < 0 && albumIndex >= 0 && albumIndex < int(library.albums().size()) && library.albums()[albumIndex].isPlaylist;
+        const bool playlist = trackIndex < 0 && albumIndex >= 0 && albumIndex < int(library.albums().size()) && (library.albums()[albumIndex].isPlaylist || library.albums()[albumIndex].isSingles);
         const art::Image *image = playlist ? nullptr : trackIndex >= 0 ? trackArt(trackIndex) : albumArt(albumIndex);
         fogMode = settings.artOnTopScreen && image != nullptr;
         if (playlist) {
@@ -1845,7 +1852,7 @@ struct App::State {
             const int n = int(library.albums().size());
             float x = BoxX;
             for (int i = 0; i < 3 && i < n; ++i) {
-                if (library.albums()[i].isPlaylist) {
+                if (library.albums()[i].isPlaylist || library.albums()[i].isSingles) {
                     drawMosaic(library.albums()[i], x, BandTopY - 7.0f, 14.0f, ui::TopBg);
                 } else {
                     const art::Image *image = albumArt(i);
@@ -2271,7 +2278,7 @@ struct App::State {
 
     void drawTile(int albumIndex, float x, float y, float size, u32 bgTop = ui::BottomBg, u32 bgBottom = 0)
     {
-        if (albumIndex >= 0 && albumIndex < int(library.albums().size()) && library.albums()[albumIndex].isPlaylist) {
+        if (albumIndex >= 0 && albumIndex < int(library.albums().size()) && (library.albums()[albumIndex].isPlaylist || library.albums()[albumIndex].isSingles)) {
             drawMosaic(library.albums()[albumIndex], x, y, size, bgTop, bgBottom);
             return;
         }

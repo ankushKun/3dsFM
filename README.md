@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 0.5.1" src="https://img.shields.io/badge/version-0.5.1-3a96eb?style=for-the-badge">
+  <img alt="Version 0.6.0" src="https://img.shields.io/badge/version-0.6.0-3a96eb?style=for-the-badge">
   <img alt="Nintendo 3DS" src="https://img.shields.io/badge/platform-Nintendo%203DS-e60012?style=for-the-badge">
   <img alt="GPLv3 license" src="https://img.shields.io/badge/license-GPLv3-56e39f?style=for-the-badge">
   <img alt="Active development" src="https://img.shields.io/badge/status-in%20development-ffc857?style=for-the-badge">
@@ -32,7 +32,7 @@ The 3DS has stereo speakers, a headphone jack, a clamshell that protects the scr
 It shares its toolchain, container build and release pipeline with [3dsDL](https://github.com/ankushKun/3dsDL), the 3DS downloader.
 
 > [!IMPORTANT]
-> Version 0.5.1 is a development build. Playback from the SD card works in the Azahar emulator and is being checked on a console; the tag reader, library scanner and play queue are covered by automated tests. It plays music from the SD card only; there is no server, streaming or downloading in the app. The plan is in [docs/PLAN.md](docs/PLAN.md).
+> Version 0.6.0 is a development build. Playback from the SD card works in the Azahar emulator and is being checked on a console; the tag reader, library scanner and play queue are covered by automated tests. It plays music from the SD card only; there is no server, streaming or downloading in the app. The plan is in [docs/PLAN.md](docs/PLAN.md).
 
 ## ✨ Features
 
@@ -133,7 +133,16 @@ sdmc:/Music/Miki Matsubara/Pocket Park/01 - Mayonaka no Door.mp3
 sdmc:/Music/Miki Matsubara/Pocket Park/cover.jpg
 ```
 
-A folder whose songs have different artists is shown as a playlist with a mosaic of its covers. The first launch reads every file, which takes a while for a big library; after that the library appears at once from the index on the card and new files are picked up in the background. After editing tags, pick **Rescan the Music folder** in Settings.
+You can also drop songs straight into the Music folder with no folders at all. The library then works out the rest:
+
+- Title, artist, album, album artist, year, track number and cover come from the file's own tags: ID3v2 and ID3v1 in MP3s, Vorbis comments in Ogg and Opus, the INFO chunk in WAVs.
+- When a tag is missing, a file named `Artist - Title.mp3` fills it in; otherwise the file name is the title. Inside folders, the folder is the album and the folder above it the artist.
+- Video-site noise such as `(Official Video)`, `[Lyrics]`, `[HD]` or a trailing video id is taken off titles.
+- A loose song that is the only one of its album is a single, and an artist's singles are gathered into one **Singles** collection with a mosaic of their covers, so 600 downloaded songs become a tile per artist instead of a tile per song.
+- A folder whose songs have different artists is shown as a playlist with a mosaic of its covers.
+- `._name` resource forks, `.DS_Store` and `Thumbs.db` files that a computer leaves next to the music are deleted during the scan.
+
+The first launch reads every file, which takes a while for a big library; after that the library appears at once from the index on the card and new files are picked up in the background. After editing tags, pick **Rescan the Music folder** in Settings.
 
 1. The bottom screen opens on **Home**, the albums. Tabs along the bottom switch to **Songs**, **Artists** and **Up next**; the round buttons open **Search**, **Now Playing** and **Settings**.
 2. Pick an album, then a song. The top screen shows what is playing, with the art fogged behind it.
@@ -290,7 +299,7 @@ Install devkitARM, libctru, Citro2D, Citro3D, 3ds-mpg123, 3ds-libopus, 3ds-opusf
 
 Building the same commit twice gives a byte-identical `3dsFM.3dsx`. The CIA is identical too, except for the ticket ID, title key and content ID that makerom randomises on every run; the packaged app inside it does not change.
 
-GitHub Actions runs the tests and the container build on every push and pull request and keeps `dist/` as a build artifact. To release, bump `VERSION`, commit, and push a matching tag such as `v0.5.1`. The workflow checks that the tag matches, verifies the checksums and publishes the release, which the website's QR codes point at through `releases/latest/download/`.
+GitHub Actions runs the tests and the container build on every push and pull request and keeps `dist/` as a build artifact. To release, bump `VERSION`, commit, and push a matching tag such as `v0.6.0`. The workflow checks that the tag matches, verifies the checksums and publishes the release, which the website's QR codes point at through `releases/latest/download/`.
 
 </details>
 
