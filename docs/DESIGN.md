@@ -91,9 +91,9 @@ Focus moves in 100 ms, no overshoot. A tile grows into the block in 160 ms. Shee
 
 Build note, not a visual: on the top screen the fogged art is drawn 3 px behind the surface and the showcase title 2 px in front, scaled by the slider. Nothing else moves.
 
-## What is live and what is waiting on the server
+## What is live
 
-Live now: library from the SD card, albums, songs, artists, search, up next, now playing, visualizer, settings, lid-closed playback. Drawn but disabled with a notice: pairing, stream quality, saving to the SD card, liking, the Downloads section.
+Library from the SD card, albums, songs, artists, search, up next, now playing, visualizer, settings, lid-closed playback. The pairing screen, stream quality, saving to the SD card, liking and the Downloads section were removed from the app in 0.5.0; their mockups stay on the canvas as history.
 
 ## Input map
 

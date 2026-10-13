@@ -506,12 +506,6 @@ void icon(Icon which, float cx, float cy, float s, u32 color, u32 bg)
         rect(cx - h * 0.8f, cy - t / 2, h * 1.1f, t, color);
         rect(cx - h * 0.8f, cy + h * 0.65f - t, h * 0.7f, t, color);
         break;
-    case Icon::Download:
-        rect(cx - t / 2, cy - h * 0.9f, t, h * 1.1f, color);
-        line(cx - h * 0.45f, cy - h * 0.25f, cx, cy + h * 0.25f, t, color);
-        line(cx + h * 0.45f, cy - h * 0.25f, cx, cy + h * 0.25f, t, color);
-        rect(cx - h * 0.8f, cy + h * 0.7f, h * 1.6f, t, color);
-        break;
     case Icon::Search:
         ring(cx - h * 0.15f, cy - h * 0.15f, h * 0.62f, t, color, bg);
         line(cx + h * 0.3f, cy + h * 0.3f, cx + h * 0.85f, cy + h * 0.85f, t * 1.2f, color);
@@ -550,11 +544,6 @@ void icon(Icon which, float cx, float cy, float s, u32 color, u32 bg)
         rect(cx - h * 0.1f, cy - h * 0.95f, h * 1.1f, h * 0.5f, bg);
         C2D_DrawTriangle(cx + h * 0.05f, cy - h * 1.0f, color, cx + h * 0.55f, cy - h * 0.7f, color, cx + h * 0.05f, cy - h * 0.4f, color, 0.5f);
         if (which == Icon::RepeatOne) rect(cx - t / 2, cy - h * 0.3f, t, h * 0.6f, color);
-        break;
-    case Icon::Heart:
-        circle(cx - h * 0.38f, cy - h * 0.3f, h * 0.42f, color);
-        circle(cx + h * 0.38f, cy - h * 0.3f, h * 0.42f, color);
-        C2D_DrawTriangle(cx - h * 0.78f, cy - h * 0.15f, color, cx + h * 0.78f, cy - h * 0.15f, color, cx, cy + h * 0.8f, color, 0.5f);
         break;
     case Icon::Headphones:
         ring(cx, cy + h * 0.1f, h * 0.75f, t, color, bg);
@@ -626,17 +615,6 @@ void icon(Icon which, float cx, float cy, float s, u32 color, u32 bg)
         rect(cx + h * 0.2f, cy - h * 0.4f, t * 1.2f, h * 1.2f, color);
         rect(cx + h * 0.7f, cy - h * 0.6f, t * 1.2f, h * 1.4f, color);
         break;
-    case Icon::Qr:
-        for (int i = 0; i < 3; ++i) {
-            const float x = i == 1 ? cx + h * 0.15f : cx - h * 0.85f;
-            const float y = i == 2 ? cx * 0 + cy + h * 0.15f : cy - h * 0.85f;
-            rect(x, y, h * 0.7f, h * 0.7f, color);
-            rect(x + t, y + t, h * 0.7f - 2 * t, h * 0.7f - 2 * t, bg);
-            rect(x + h * 0.25f, y + h * 0.25f, h * 0.2f, h * 0.2f, color);
-        }
-        rect(cx + h * 0.2f, cy + h * 0.2f, h * 0.25f, h * 0.25f, color);
-        rect(cx + h * 0.6f, cy + h * 0.6f, h * 0.25f, h * 0.25f, color);
-        break;
     case Icon::Person:
         circle(cx, cy - h * 0.4f, h * 0.35f, color);
         circle(cx, cy + h * 0.75f, h * 0.7f, color);
@@ -651,21 +629,9 @@ void icon(Icon which, float cx, float cy, float s, u32 color, u32 bg)
         rect(cx, cy - h * 0.95f, h, h * 0.6f, bg);
         C2D_DrawTriangle(cx + h * 0.0f, cy - h * 0.95f, color, cx + h * 0.55f, cy - h * 0.6f, color, cx + h * 0.0f, cy - h * 0.25f, color, 0.5f);
         break;
-    case Icon::Cloud:
-        circle(cx - h * 0.35f, cy + h * 0.1f, h * 0.45f, color);
-        circle(cx + h * 0.2f, cy - h * 0.15f, h * 0.55f, color);
-        circle(cx + h * 0.5f, cy + h * 0.2f, h * 0.4f, color);
-        rect(cx - h * 0.35f, cy + h * 0.1f, h * 0.85f, h * 0.5f, color);
-        break;
     case Icon::Album:
         ring(cx, cy, h * 0.85f, h * 0.45f, color, bg);
         circle(cx, cy, h * 0.18f, color);
-        break;
-    case Icon::Server:
-        roundRect(cx - h * 0.8f, cy - h * 0.8f, h * 1.6f, h * 0.65f, 1.5f, color);
-        roundRect(cx - h * 0.8f, cy + h * 0.15f, h * 1.6f, h * 0.65f, 1.5f, color);
-        circle(cx - h * 0.5f, cy - h * 0.47f, t * 0.6f, bg);
-        circle(cx - h * 0.5f, cy + h * 0.47f, t * 0.6f, bg);
         break;
     }
 }

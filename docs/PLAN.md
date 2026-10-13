@@ -18,12 +18,10 @@ The console never talks to YouTube. It only ever sees one audio format, so the d
 
 1. **Scaffold** (done): container build, host tests, Azahar launcher.
 2. **Local playback** (done): SD card library with tags and art, MP3, Ogg Vorbis, Opus and WAV decoders feeding NDSP on a thread, lid-closed playback.
-3. **Clearwater UI** (done): all screens in Citro2D with bundled fonts; server-only features drawn but disabled.
-4. **Backend v1**: search and stream, a throwaway web page to prove transcoding and range requests.
-5. **Pairing and streaming**: QR pairing, Opus streaming into the existing player, the server-backed Library sections.
-6. **Downloads**: reuse 3dsDL's download engine and resume logic for saving tracks and art to the SD card.
-7. **Lyrics** from the server, with `.lrc` sidecar files for local music.
-8. **Stereo depth** on the top screen, animation polish, menu sounds, HOME Menu banner with 3D art, release.
+3. **Clearwater UI** (done): all screens in Citro2D with bundled fonts.
+4. **Server, pairing, streaming and downloads**: dropped from the app on 2026-10-13 (0.5.0). The screens, settings and menu items for them were removed; the player is SD card only. The backend notes below are kept for reference only.
+5. **Lyrics** with `.lrc` sidecar files for local music.
+6. **Stereo depth** on the top screen, animation polish, menu sounds, HOME Menu banner with 3D art, release.
 
 ## Decisions already made
 

@@ -57,9 +57,9 @@ void gradientH(float x, float y, float w, float h, u32 left, u32 right);
 void dots(float x, float y, float w, float h);
 
 enum class Icon {
-    Home, Note, Grid, List, Download, Search, Queue, Gear, Play, Pause, Prev, Next, Shuffle, Repeat, RepeatOne,
-    Heart, Headphones, Wifi, Battery, Clock, ChevronRight, ChevronLeft, Close, Plus, Minus, Trash, Grip,
-    Keyboard, Bars, Qr, Person, Check, Retry, Cloud, Lyrics, Back, Album, Server
+    Home, Note, Grid, List, Search, Queue, Gear, Play, Pause, Prev, Next, Shuffle, Repeat, RepeatOne,
+    Headphones, Wifi, Battery, Clock, ChevronRight, ChevronLeft, Close, Plus, Minus, Trash, Grip,
+    Keyboard, Bars, Person, Check, Retry, Lyrics, Back, Album
 };
 // Draws an icon centred on cx, cy inside a box of `size`. `bg` is used for
 // hollow shapes (rings) so they cut cleanly on their background.

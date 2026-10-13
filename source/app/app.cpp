@@ -34,8 +34,8 @@ constexpr float BotH = 240.0f;
 // Sizes on the bottom screen are generous: on a console the 2x mockups'
 // values came out too small to hit with a thumb or read at arm's length.
 constexpr float TabY = 17.0f;
-constexpr float TabX0 = 22.0f;
-constexpr float TabStep = 28.0f;
+constexpr float TabX0 = 24.0f;
+constexpr float TabStep = 32.0f;
 constexpr float TabIcon = 18.0f;
 constexpr float RoundY = 17.0f;
 constexpr float RoundX0 = 244.0f;
@@ -79,8 +79,8 @@ constexpr float MenuW = 170.0f;
 constexpr float DialogButtonY = 146.0f;
 constexpr float DialogButtonH = 24.0f;
 
-enum class View { Section, Album, Artist, NowPlaying, Search, Settings, Visualizer, Pairing };
-enum class Section { Home, Songs, Artists, UpNext, Downloads };
+enum class View { Section, Album, Artist, NowPlaying, Search, Settings, Visualizer };
+enum class Section { Home, Songs, Artists, UpNext };
 
 struct MenuItem {
     std::string label;
@@ -596,24 +596,27 @@ struct App::State {
         if (!chromeShown()) chromeFocus = -1;
     }
 
-    // The cursor can climb into the top row of the bottom screen: the five
-    // tabs, then Search, Now Playing and Settings (0 to 7). -1 means it is
+    // The cursor can climb into the top row of the bottom screen: the four
+    // tabs, then Search, Now Playing and Settings (0 to 6). -1 means it is
     // down in the content. Search and Settings draw no top row, so the
     // cursor lands in their content when they open.
     int chromeFocus = -1;
     bool chromeShown() const { return view == View::Section || view == View::NowPlaying || view == View::Album || view == View::Artist; }
     bool chromeHasTabs() const { return view == View::Section || view == View::NowPlaying || view == View::Album || view == View::Artist; }
-    void enterChrome() { chromeFocus = view == View::Section || view == View::Album || view == View::Artist ? int(section) : view == View::NowPlaying ? 6 : 5; }
+    static constexpr int ChromeSearch = 4;
+    static constexpr int ChromeNow = 5;
+    static constexpr int ChromeSettings = 6;
+    void enterChrome() { chromeFocus = view == View::Section || view == View::Album || view == View::Artist ? int(section) : view == View::NowPlaying ? ChromeNow : ChromeSearch; }
     void activateChrome(int i)
     {
-        if (i < 5) {
+        if (i < ChromeSearch) {
             section = Section(i);
             listScroll = 0;
             listPx = 0.0f;
             if (view != View::Section) go(View::Section);
-        } else if (i == 5) {
+        } else if (i == ChromeSearch) {
             go(View::Search);
-        } else if (i == 6) {
+        } else if (i == ChromeNow) {
             go(View::NowPlaying);
         } else {
             go(View::Settings);
@@ -623,10 +626,10 @@ struct App::State {
     bool updateChrome(u32 k, u32 kd)
     {
         if (chromeFocus < 0) return false;
-        const int first = chromeHasTabs() ? 0 : 5;
+        const int first = chromeHasTabs() ? 0 : ChromeSearch;
         if (chromeFocus < first) chromeFocus = first;
-        if (left(k)) chromeFocus = chromeFocus > first ? chromeFocus - 1 : 7;
-        if (right(k)) chromeFocus = chromeFocus < 7 ? chromeFocus + 1 : first;
+        if (left(k)) chromeFocus = chromeFocus > first ? chromeFocus - 1 : ChromeSettings;
+        if (right(k)) chromeFocus = chromeFocus < ChromeSettings ? chromeFocus + 1 : first;
         if (down(k) || (kd & KEY_B)) {
             chromeFocus = -1;
             return true;
@@ -651,7 +654,6 @@ struct App::State {
         case View::NowPlaying:
         case View::Search:
         case View::Settings:
-        case View::Pairing:
             view = previous == view ? View::Section : previous;
             if (view == View::Visualizer) view = View::NowPlaying;
             break;
@@ -998,11 +1000,6 @@ struct App::State {
         if (!player.loaded() && queue.current() != nullptr) startCurrent();
     }
 
-    void disabled(const char *what)
-    {
-        toast(std::string(what) + " needs a paired server");
-    }
-
     // ---- menus ----
     void openTrackMenu(int trackIndex)
     {
@@ -1019,8 +1016,6 @@ struct App::State {
             }});
             menu.push_back({"Go to album", Icon::ChevronRight, true, [this, album] { openAlbum(album); }});
         }
-        menu.push_back({"Save to SD card", Icon::Download, false, [this] { disabled("Saving"); }});
-        menu.push_back({"Like", Icon::Heart, false, [this] { disabled("Liking"); }});
         menuFocus = 0;
         menuOpen = true;
     }
@@ -1035,7 +1030,6 @@ struct App::State {
         menu.push_back({"Shuffle album", Icon::Shuffle, true, [this, tracks] { playList(tracks, 0, true); }});
         menu.push_back({"Add to up next", Icon::Queue, true, [this, tracks] { addToUpNext(tracks); }});
         menu.push_back({"Go to artist", Icon::Person, true, [this, artist] { openArtist(artist); }});
-        menu.push_back({"Save album", Icon::Download, false, [this] { disabled("Saving"); }});
         menuFocus = 0;
         menuOpen = true;
     }
@@ -1078,8 +1072,6 @@ struct App::State {
                 const std::vector<const core::Item *> upcoming = queue.upcoming();
                 return focusUpNext < int(upcoming.size()) ? albumIndexOfTrack(upcoming[focusUpNext]->libraryIndex) : albumIndexOfTrack(nowTrack);
             }
-            case Section::Downloads:
-                return -1;
             }
             return -1;
         case View::Album: return albumView;
@@ -1198,19 +1190,15 @@ struct App::State {
     {
         std::vector<SettingRow> rows;
         const int songs = int(library.tracks().size());
-        rows.push_back({"Server", "", true, false, -1, ""});
-        rows.push_back({"Paired server", "Not paired", false, true, -1, "Streaming from your own 3dsFM server is coming in a later build. For now, everything plays from the SD card."});
-        rows.push_back({"Stream quality", "Needs a server", false, false, -1, "Stream quality applies to music coming from a paired server. Saved and local files play at their own quality."});
         rows.push_back({"Playback", "", true, false, -1, ""});
         rows.push_back({"Keep playing with the lid closed", "", false, true, settings.keepPlayingLidClosed ? 1 : 0, "With this on, closing the lid turns the screens off and keeps the music going, like the console's own sound app. Open the lid and the screens come back."});
-        rows.push_back({"Prefer saved copies", "", false, false, -1, "When a song is both saved and streamable, play the saved copy. This matters once a server is paired."});
         rows.push_back({"Look", "", true, false, -1, ""});
         rows.push_back({"Dark mode", "", false, true, settings.darkMode ? 1 : 0, "Dark screens with light text. Off gives the white HOME Menu look. Either way the selection blue stays the same."});
         rows.push_back({"Album art on the top screen", "", false, true, settings.artOnTopScreen ? 1 : 0, "Shows the focused album's art fogged into the top screen. Turn it off for a plain top screen that uses less battery on an Old 3DS."});
         rows.push_back({"Library", "", true, false, -1, ""});
         rows.push_back({"Music folder", settings.musicFolder, false, true, -1, "The folder 3dsFM scans for music. Albums are folders of songs; tags are read from MP3, Ogg, Opus and WAV files when they have them."});
         rows.push_back({"Rescan the Music folder", "", false, true, -1, "New files are picked up every time 3dsFM starts; this reads the tags of every file again, for when you have changed them."});
-        rows.push_back({"Storage", plural(songs, "song", "songs") + " · " + gigabytes(platform::sdFreeBytes()) + " free", false, false, -1, "What is on the SD card. Saving streamed songs will use this space once a server is paired."});
+        rows.push_back({"Storage", plural(songs, "song", "songs") + " · " + gigabytes(platform::sdFreeBytes()) + " free", false, false, -1, "What is on the SD card: the songs in the Music folder and the space left for more."});
         return rows;
     }
 
@@ -1219,9 +1207,7 @@ struct App::State {
         std::vector<SettingRow> rows = settingRows();
         if (index < 0 || index >= int(rows.size())) return;
         const std::string &label = rows[index].label;
-        if (label == "Paired server") {
-            go(View::Pairing);
-        } else if (label == "Keep playing with the lid closed") {
+        if (label == "Keep playing with the lid closed") {
             settings.keepPlayingLidClosed = !settings.keepPlayingLidClosed;
             settings.save();
         } else if (label == "Dark mode") {
@@ -1249,8 +1235,6 @@ struct App::State {
             nowTrack = -1;
             startScan(true);
             toast("Reading every file in " + settings.musicFolder);
-        } else if (!rows[index].enabled) {
-            disabled("This");
         }
     }
 
@@ -1318,7 +1302,6 @@ struct App::State {
         case View::Search: updateSearch(k, kd, tapped, touch); break;
         case View::Settings: updateSettings(k, kd, tapped, touch); break;
         case View::Visualizer: updateVisualizer(k, kd, tapped, touch); break;
-        case View::Pairing: updatePairing(kd, tapped, touch); break;
         }
     }
 
@@ -1326,7 +1309,7 @@ struct App::State {
     bool chromeTap(const touchPosition &touch, bool withTabs)
     {
         if (withTabs) {
-            for (int i = 0; i < 5; ++i) {
+            for (int i = 0; i < 4; ++i) {
                 if (ui::hit(TabX0 + i * TabStep - 13.0f, TabY - 13.0f, 26.0f, 26.0f, touch.px, touch.py)) {
                     section = Section(i);
                     listScroll = 0; listPx = 0.0f;
@@ -1409,7 +1392,6 @@ struct App::State {
             }
             if (kd & KEY_A) openAlbum(focusHome);
             if (kd & KEY_Y) openAlbumMenu(focusHome);
-            if (kd & KEY_X) disabled("Saving");
             if (tapped) {
                 if (ui::hit(StripX, StripY, StripW, StripH, touch.px, touch.py)) {
                     const float cy = StripY + StripH / 2.0f;
@@ -1440,7 +1422,6 @@ struct App::State {
             if (all.empty()) break;
             if (kd & KEY_A) playList(all, focusSongs);
             if (kd & KEY_Y) openTrackMenu(all[focusSongs]);
-            if (kd & KEY_X) disabled("Saving");
             if (tapped) {
                 const int row = tappedRow(touch, GridY, SectionRows, int(all.size()));
                 if (row >= 0) { if (row == focusSongs) playList(all, row); else focusSongs = row; }
@@ -1509,10 +1490,6 @@ struct App::State {
             }
             break;
         }
-        case Section::Downloads:
-            if (up(k)) enterChrome();
-            if (kd & KEY_A) disabled("Saving");
-            break;
         }
     }
 
@@ -1563,7 +1540,6 @@ struct App::State {
         moveListFocus(focusAlbum, int(a.tracks.size()), HeaderRows, k);
         if (kd & KEY_A && !a.tracks.empty()) playList(a.tracks, focusAlbum);
         if (kd & KEY_Y && !a.tracks.empty()) openTrackMenu(a.tracks[focusAlbum]);
-        if (kd & KEY_X) disabled("Saving");
         if (tapped) {
             if (ui::hit(252.0f, HeaderY + 7.0f, 26.0f, 26.0f, touch.px, touch.py)) playList(a.tracks, 0, true);
             else if (ui::hit(282.0f, HeaderY + 5.0f, 30.0f, 30.0f, touch.px, touch.py)) playList(a.tracks, 0);
@@ -1620,7 +1596,6 @@ struct App::State {
                 if (focusNowQueue > 0 && (kd & KEY_Y)) openTrackMenu(queued[size_t(focusNowQueue)]->libraryIndex);
             }
         }
-        if (kd & KEY_X) disabled("Saving");
         if (tapped) {
             for (int i = 0; i < 5; ++i) {
                 const float r = TransportR[i];
@@ -1697,7 +1672,6 @@ struct App::State {
         }
         if (kd & KEY_A) playList(searchResults, focusSearch);
         if (kd & KEY_Y) openTrackMenu(searchResults[focusSearch]);
-        if (kd & KEY_X) disabled("Saving");
         if (tapped) {
             const int row = tappedRow(touch, SearchRowsY, SearchRows, int(searchResults.size()));
             if (row >= 0) { if (row == focusSearch) playList(searchResults, row); else focusSearch = row; }
@@ -1778,14 +1752,6 @@ struct App::State {
         }
         // Dim the bottom screen after a while without input.
         if (kd != 0 || tapped) visualizerDim = 0; else if (visualizerDim < 600) ++visualizerDim;
-    }
-
-    void updatePairing(u32 kd, bool tapped, const touchPosition &touch)
-    {
-        if (kd & KEY_B) { back(); return; }
-        if ((kd & (KEY_A | KEY_X)) || (tapped && ui::hit(10.0f, 208.0f, 300.0f, 28.0f, touch.px, touch.py))) {
-            toast("Pairing comes with the server release");
-        }
     }
 
     void updateMenu(u32 k, u32 kd, bool tapped, const touchPosition &touch)
@@ -1973,9 +1939,8 @@ struct App::State {
     {
         switch (view) {
         case View::Section:
-            if (section == Section::Home) drawLegend({{"A", "Open"}, {"X", "Save"}, {"Y", "Menu"}});
+            if (section == Section::Home) drawLegend({{"A", "Open"}, {"Y", "Menu"}});
             else if (section == Section::UpNext) drawLegend({{"A", "Play now"}, {"X", "Remove"}, {"Y", "Menu"}});
-            else if (section == Section::Downloads) drawLegend({{"B", "Home"}});
             else drawLegend({{"A", "Play"}, {"B", "Home"}, {"Y", "Menu"}});
             break;
         case View::Album:
@@ -1997,7 +1962,7 @@ struct App::State {
         const int album = showcaseAlbum();
         // Whatever the bottom screen is doing, the top screen shows what is
         // playing. Only the information views keep their own top screen.
-        if (nowTrack >= 0 && view != View::Settings && view != View::Pairing && view != View::Visualizer) {
+        if (nowTrack >= 0 && view != View::Settings && view != View::Visualizer) {
             drawTopNowPlaying(albumIndexOfTrack(nowTrack));
             drawContextLegend();
             drawToast();
@@ -2037,36 +2002,12 @@ struct App::State {
             break;
         case View::Settings: drawTopSettings(); break;
         case View::Visualizer: drawTopVisualizer(album); break;
-        case View::Pairing: drawTopPairing(); break;
         }
         drawToast();
     }
 
     void drawTopSection(int album)
     {
-        if (section == Section::Downloads) {
-            drawTopCorners(false);
-            ui::text("Downloads", BoxX, BandTopY - 5.0f, 10.0f, ui::Meta);
-            ui::roundRect(75.0f, 55.0f, 250.0f, 120.0f, 8.0f, ui::withAlpha(ui::ShadowBase, 0x14));
-            ui::roundRect(75.0f, 53.0f, 250.0f, 120.0f, 8.0f, ui::Sheet);
-            ui::text("SD card", 87.0f, 63.0f, 10.0f, ui::Meta);
-            const int64_t total = platform::sdTotalBytes();
-            const int64_t free = platform::sdFreeBytes();
-            if (total > 0 && free >= 0) {
-                ui::text(gigabytes(free) + " free", 313.0f, 63.0f, 10.0f, ui::Ink, ui::Align::Right);
-                ui::roundRect(87.0f, 78.0f, 226.0f, 7.0f, 3.5f, ui::Line);
-                const float used = float(double(total - free) / double(total));
-                ui::roundRect(87.0f, 78.0f, 226.0f * used, 7.0f, 3.5f, ui::InkFaint);
-            }
-            ui::text(plural(int(library.tracks().size()), "song", "songs") + " in " + settings.musicFolder + " · " + minutesText(library.totalDurationSeconds()), 87.0f, 93.0f, 10.0f, ui::Meta, ui::Align::Left, 226.0f);
-            ui::rect(87.0f, 110.0f, 226.0f, 1.0f, ui::Line);
-            ui::text("Saving songs from a server", 87.0f, 118.0f, 12.0f, ui::Ink, ui::Align::Left, 0.0f, ui::Weight::Bold);
-            ui::text("Comes with the server release. Until then, copy", 87.0f, 134.0f, 8.0f, ui::Meta);
-            ui::text("music to the SD card and it shows up in Library.", 87.0f, 146.0f, 10.0f, ui::Meta);
-            drawPlayingCorner();
-            drawLegend({{"B", "Back"}});
-            return;
-        }
         int focusedTrack = -1;
         if (section == Section::Songs) {
             const std::vector<int> &all = allTracks();
@@ -2180,7 +2121,6 @@ struct App::State {
                 ui::text(l, 87.0f, y, 10.0f, ui::InkSoft);
                 y += 11.0f;
             }
-            if (!r.enabled) ui::tag("Needs a server", 87.0f, 148.0f, ui::Line, ui::Meta);
         }
         drawPlayingCorner();
         drawLegend({{"A", "Change"}, {"B", "Back"}});
@@ -2267,46 +2207,6 @@ struct App::State {
         }
     }
 
-    void drawTopPairing()
-    {
-        // A fan of up to three distinct song covers, fogging in from the
-        // right; nothing is drawn where the library has no art.
-        std::vector<int> picks;
-        std::vector<uint64_t> seen;
-        for (const core::Track &t : library.tracks()) {
-            if (!t.hasEmbeddedArt || std::find(seen.begin(), seen.end(), t.artHash) != seen.end()) continue;
-            seen.push_back(t.artHash);
-            picks.push_back(int(&t - &library.tracks()[0]));
-            if (picks.size() == 3) break;
-        }
-        if (picks.empty()) {
-            for (int i = 0; i < int(library.albums().size()) && picks.size() < 3; ++i) {
-                if (!library.albums()[i].artPath.empty() && !library.albums()[i].tracks.empty()) picks.push_back(library.albums()[i].tracks[0]);
-            }
-        }
-        const float xs[3] = {262.0f, 300.0f, 338.0f};
-        const float ys[3] = {44.0f, 84.0f, 124.0f};
-        for (size_t i = 0; i < picks.size(); ++i) {
-            const art::Image *image = trackArt(picks[i]);
-            if (image == nullptr) continue;
-            ui::roundRect(xs[i] + 2.0f, ys[i] + 4.0f, 110.0f, 110.0f, 10.0f, ui::withAlpha(ui::ShadowBase, 0x30));
-            art::draw(*image, xs[i], ys[i], 110.0f, 110.0f);
-            ui::roundCorners(xs[i], ys[i], 110.0f, 110.0f, 10.0f, ui::TopBg, ui::TopBg);
-        }
-        ui::gradientH(240.0f, 0.0f, 160.0f, TopH, ui::withAlpha(ui::TopBg, 0), ui::withAlpha(ui::TopBg, 200));
-        ui::gradientV(240.0f, 0.0f, 160.0f, 40.0f, ui::TopBg, ui::withAlpha(ui::TopBg, 0));
-        ui::gradientV(240.0f, 196.0f, 160.0f, 44.0f, ui::withAlpha(ui::TopBg, 0), ui::TopBg);
-        drawTopCorners(false);
-        ui::text("Not paired", BoxX, BandTopY - 5.0f, 10.0f, ui::Meta);
-        ui::text("3dsFM", BoxX, 58.0f, 40.0f, ui::Ink, ui::Align::Left, 0.0f, ui::Weight::Bold);
-        ui::text("Music from your own server,", BoxX, 108.0f, 12.0f, ui::InkSoft);
-        ui::text("saved to your SD card.", BoxX, 123.0f, 12.0f, ui::InkSoft);
-        ui::text("Pairing with a 3dsFM server comes in a later build.", BoxX, 148.0f, 10.0f, ui::Meta, ui::Align::Left, 220.0f);
-        ui::text("Until then the Music folder on the SD card is the library.", BoxX, 160.0f, 10.0f, ui::Meta, ui::Align::Left, 220.0f);
-        drawPlayingCorner();
-        drawLegend({{"A", "Scan"}, {"X", "Type address"}, {"B", "Back"}});
-    }
-
     void drawToast()
     {
         if (toastFrames <= 0) return;
@@ -2323,8 +2223,8 @@ struct App::State {
     void drawBottomChrome(bool withTabs)
     {
         if (withTabs) {
-            static const Icon icons[5] = {Icon::Home, Icon::Note, Icon::Person, Icon::Queue, Icon::Download};
-            for (int i = 0; i < 5; ++i) {
+            static const Icon icons[4] = {Icon::Home, Icon::Note, Icon::Person, Icon::Queue};
+            for (int i = 0; i < 4; ++i) {
                 const bool active = view == View::Section && int(section) == i;
                 const bool cursor = chromeFocus == i;
                 if (cursor) ui::circle(TabX0 + i * TabStep, TabY, 15.0f, ui::BlueTint);
@@ -2333,9 +2233,9 @@ struct App::State {
         }
         // One cursor on the whole screen: the ring is the cursor, and the
         // button of the current view shows it by a blue icon instead.
-        ui::roundButton(RoundX0, RoundY, RoundR, Icon::Search, false, chromeFocus == 5, view == View::Search ? ui::Blue : 0);
-        ui::roundButton(RoundX0 + RoundStep, RoundY, RoundR, Icon::Note, false, chromeFocus == 6, view == View::NowPlaying ? ui::Blue : 0);
-        ui::roundButton(RoundX0 + 2 * RoundStep, RoundY, RoundR, Icon::Gear, true, chromeFocus == 7, view == View::Settings ? ui::BlueLight : 0);
+        ui::roundButton(RoundX0, RoundY, RoundR, Icon::Search, false, chromeFocus == ChromeSearch, view == View::Search ? ui::Blue : 0);
+        ui::roundButton(RoundX0 + RoundStep, RoundY, RoundR, Icon::Note, false, chromeFocus == ChromeNow, view == View::NowPlaying ? ui::Blue : 0);
+        ui::roundButton(RoundX0 + 2 * RoundStep, RoundY, RoundR, Icon::Gear, true, chromeFocus == ChromeSettings, view == View::Settings ? ui::BlueLight : 0);
     }
 
     // Tiles are rounded by painting their corners in the colour behind them.
@@ -2464,7 +2364,6 @@ struct App::State {
         case View::Search: drawBottomSearch(); break;
         case View::Settings: drawBottomSettings(); break;
         case View::Visualizer: drawBottomVisualizer(); break;
-        case View::Pairing: drawBottomPairing(); break;
         }
         if (menuOpen) drawMenu();
         if (dialogOpen) drawDialog();
@@ -2530,9 +2429,6 @@ struct App::State {
             }
             break;
         }
-        case Section::Downloads:
-            drawEmptyCard(Icon::Download, "Nothing to save yet", "Saving songs from a server comes later.", "Your SD card music is already in Library.", "Needs a server");
-            break;
         }
     }
 
@@ -2707,28 +2603,6 @@ struct App::State {
         ui::text(t.artist, x + 38.0f, y + 19.0f, 9.0f, ui::Meta, ui::Align::Left, w - 50.0f);
         const float pos = float(player.positionSeconds());
         ui::progressBar(x + 38.0f, y + 31.0f, w - 50.0f, 3.0f, t.durationSeconds > 0 ? pos / t.durationSeconds : 0.0f);
-    }
-
-    void drawBottomPairing()
-    {
-        ui::rect(0, 0, BotW, BotH, C2D_Color32(0x1A, 0x1D, 0x22, 0xFF));
-        const float cx = 160.0f;
-        const float cy = 96.0f;
-        const float h = 55.0f;
-        for (int i = 0; i < 4; ++i) {
-            const float sx = i % 2 == 0 ? cx - h : cx + h;
-            const float sy = i < 2 ? cy - h : cy + h;
-            const float dx = i % 2 == 0 ? 1.0f : -1.0f;
-            const float dy = i < 2 ? 1.0f : -1.0f;
-            ui::rect(sx - (dx < 0 ? 2.5f : 0.0f), sy - (dy < 0 ? 2.5f : 0.0f), dx > 0 ? 20.0f : 2.5f, dy > 0 ? 20.0f : 2.5f, ui::White);
-            ui::rect(sx - (dx < 0 ? 20.0f : 0.0f), sy - (dy < 0 ? 2.5f : 0.0f), 20.0f, 2.5f, ui::White);
-            ui::rect(sx - (dx < 0 ? 2.5f : 0.0f), sy - (dy < 0 ? 20.0f : 0.0f), 2.5f, 20.0f, ui::White);
-        }
-        ui::text("The camera opens here once pairing exists", cx, 170.0f, 9.0f, ui::withAlpha(ui::White, 0xB0), ui::Align::Center);
-        ui::roundRect(10.0f, 208.0f, 300.0f, 28.0f, 8.0f, ui::Sheet);
-        ui::icon(Icon::Keyboard, 24.0f, 222.0f, 12.0f, ui::Meta, ui::Sheet);
-        ui::text("Type the server address instead", 36.0f, 216.0f, 11.0f, ui::Ink, ui::Align::Left, 0.0f, ui::Weight::Bold);
-        ui::tag("Soon", 268.0f, 216.0f, ui::Line, ui::Meta);
     }
 
     void drawMenu()

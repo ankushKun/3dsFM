@@ -108,18 +108,14 @@ AccessControlInfo:
 
   ServiceAccessControl:
     - APT:U
-    - ac:u
     - cfg:u
     - dsp::DSP
     - fs:USER
     - gsp::Gpu
     - gsp::Lcd
     - hid:USER
-    - ndm:u
     - ptm:u
     - ptm:sysm
-    - soc:U
-    - ssl:C
 
 SystemControlInfo:
   SaveDataSize: 0KB
@@ -127,12 +123,8 @@ SystemControlInfo:
   StackSize: 0x40000
 
   Dependency:
-    ac: 0x0004013000002402
     cfg: 0x0004013000001702
     dsp: 0x0004013000001a02
     gsp: 0x0004013000001c02
     hid: 0x0004013000001d02
-    ndm: 0x0004013000002b02
     ptm: 0x0004013000002202
-    socket: 0x0004013000002e02
-    ssl: 0x0004013000002f02
