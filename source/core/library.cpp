@@ -357,12 +357,17 @@ std::string indexField(const std::string &s)
 
 } // namespace
 
-std::string encodeIndex(const std::vector<Track> &tracks, const std::vector<Cover> &covers)
+std::string encodeIndexHeader()
 {
-    std::string out = IndexHeader;
-    out += '\n';
+    return std::string(IndexHeader) + '\n';
+}
+
+std::string encodeIndexTracks(const std::vector<Track> &tracks, size_t from, size_t to)
+{
+    std::string out;
     char number[40];
-    for (const Track &t : tracks) {
+    for (size_t i = from; i < to && i < tracks.size(); ++i) {
+        const Track &t = tracks[i];
         out += indexField(t.path) + '\t';
         out += std::to_string(int(t.format)) + '\t';
         out += indexField(t.title) + '\t';
@@ -379,10 +384,19 @@ std::string encodeIndex(const std::vector<Track> &tracks, const std::vector<Cove
         out += number;
         out += '\n';
     }
-    for (const Cover &c : covers) {
-        out += "cover\t" + indexField(c.first) + '\t' + indexField(c.second) + '\n';
-    }
     return out;
+}
+
+std::string encodeIndexCovers(const std::vector<Cover> &covers)
+{
+    std::string out;
+    for (const Cover &c : covers) out += "cover\t" + indexField(c.first) + '\t' + indexField(c.second) + '\n';
+    return out;
+}
+
+std::string encodeIndex(const std::vector<Track> &tracks, const std::vector<Cover> &covers)
+{
+    return encodeIndexHeader() + encodeIndexTracks(tracks, 0, tracks.size()) + encodeIndexCovers(covers);
 }
 
 int indexVersion(const std::string &text)

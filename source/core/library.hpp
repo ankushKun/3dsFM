@@ -68,6 +68,11 @@ using Cover = std::pair<std::string, std::string>;
 // next launch can show the whole library before it reads a single music
 // file. One line per track or cover; see the .cpp for the format.
 std::string encodeIndex(const std::vector<Track> &tracks, const std::vector<Cover> &covers = {});
+// The pieces of an index, so a scan can write the header once and append
+// each batch of tracks as it goes instead of rewriting the whole file.
+std::string encodeIndexHeader();
+std::string encodeIndexTracks(const std::vector<Track> &tracks, size_t from, size_t to);
+std::string encodeIndexCovers(const std::vector<Cover> &covers);
 bool decodeIndex(const std::string &text, std::vector<Track> &tracks, std::vector<Cover> &covers);
 bool decodeIndex(const std::string &text, std::vector<Track> &tracks);
 // The format version an index was written with (0 when it is not one), and

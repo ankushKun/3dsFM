@@ -157,6 +157,19 @@ bool writeTextFile(const std::string &path, const std::string &text)
     return true;
 }
 
+bool appendTextFile(const std::string &path, const std::string &text)
+{
+    FILE *f = std::fopen(path.c_str(), "ab");
+    if (f == nullptr) {
+        log("append failed: could not open %s", path.c_str());
+        return false;
+    }
+    const bool ok = std::fwrite(text.data(), 1, text.size(), f) == text.size();
+    std::fclose(f);
+    if (!ok) log("append failed: short write to %s", path.c_str());
+    return ok;
+}
+
 bool fileExists(const std::string &path)
 {
     struct stat st {};

@@ -409,8 +409,27 @@ struct App::State {
         self->junkTotal = int(lib.junkFiles().size());
         platform::log("scan: %d files and %d junk files under %s", lib.collectedCount(), int(lib.junkFiles().size()), self->settings.musicFolder.c_str());
         if (!self->scanFull && !self->scanKnown.empty()) lib.useIndex(self->scanKnown);
-        int fresh = 0; // tags read since the index was last written
-        int reused = 0;
+        // The music is read in batches of a hundred. Each batch is appended
+        // to the index on the card, so a scan that is cut short keeps what
+        // it read, and the file is never rewritten whole until the end. The
+        // tags of a file are dropped as soon as its line is made; only the
+        // short track records stay in memory. Every batch logs its timing.
+        constexpr int Batch = 100;
+        bool headerWritten = false;
+        size_t written = 0; // tracks already appended to the index
+        u64 batchStarted = osGetTime();
+        auto flush = [&]() {
+            const size_t total = lib.tracks().size();
+            if (total == written) return;
+            const u64 t0 = osGetTime();
+            if (!headerWritten) headerWritten = platform::writeTextFile(platform::IndexPath, core::encodeIndexHeader());
+            if (headerWritten) platform::appendTextFile(platform::IndexPath, core::encodeIndexTracks(lib.tracks(), written, total));
+            const u64 t1 = osGetTime();
+            platform::log("scan: %d of %d read, %d from the index; %llu ms for this batch, %llu ms of it saving",
+                          int(total), lib.collectedCount(), lib.reusedCount(), (unsigned long long)(t1 - batchStarted), (unsigned long long)(t1 - t0));
+            written = total;
+            batchStarted = t1;
+        };
         bool more = true;
         while (more && !self->scanAbort) {
             if (self->scanPaused) {
@@ -419,14 +438,13 @@ struct App::State {
             }
             more = lib.step(platform::readTagsFromFile, 1);
             self->scanProgress = lib.scannedCount();
-            if (lib.reusedCount() == reused) ++fresh; else reused = lib.reusedCount();
-            if (fresh >= 20) {
-                platform::writeTextFile(platform::IndexPath, core::encodeIndex(lib.tracks(), lib.looseCovers()));
-                fresh = 0;
-            }
+            if (lib.tracks().size() - written >= size_t(Batch)) flush();
         }
         if (!self->scanAbort) {
+            flush();
             lib.build();
+            // The whole index once, in order and with the cover files, now
+            // that every line is known.
             const bool saved = platform::writeTextFile(platform::IndexPath, core::encodeIndex(lib.tracks(), lib.looseCovers()));
             platform::log("scan: %d tracks, %d from the index, index %s", int(lib.tracks().size()), lib.reusedCount(), saved ? "saved" : "NOT saved");
         }
