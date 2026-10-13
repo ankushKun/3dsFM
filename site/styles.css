@@ -2482,3 +2482,199 @@ dialog::backdrop {
   height: 74px;
   background: linear-gradient(color-mix(in srgb, var(--sbg, var(--app-bg)) 88%, transparent), transparent);
 }
+
+/* ---- The buddy card: the other app, peeking in from the right edge like
+   a game card left in the slot. Hover or tap slides it out; the icon bobs
+   and now and then gives a wiggle; a handwritten "psst!" shows up once. ---- */
+.buddy {
+  position: fixed;
+  right: 0;
+  top: 46%;
+  z-index: 12;
+  transform: translateX(calc(100% - 70px));
+  transition: transform 420ms var(--spring);
+  filter: drop-shadow(0 10px 18px rgba(36, 56, 78, 0.18));
+}
+.buddy.is-open,
+.buddy:hover,
+.buddy:focus-within {
+  transform: translateX(0);
+}
+.buddy.is-hidden {
+  transform: translateX(110%);
+  pointer-events: none;
+}
+.buddy-card {
+  display: flex;
+  align-items: stretch;
+  max-width: calc(100vw - 6px);
+  text-decoration: none;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--rim);
+  border-right: 0;
+  border-radius: 22px 0 0 22px;
+  box-shadow: inset 0 2px 0 #fff, 0 4px 0 var(--rim-lo);
+  overflow: hidden;
+}
+.buddy-tab {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  padding: 14px 0;
+  border: 0;
+  border-radius: 20px 0 0 20px;
+  background: var(--buddy-tone);
+  color: #fff;
+  font: 400 13px/1 var(--dot);
+  letter-spacing: 0.1em;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  cursor: pointer;
+  box-shadow: inset -3px 0 0 rgba(0, 0, 0, 0.12), inset 2px 0 0 rgba(255, 255, 255, 0.35);
+}
+.buddy-body {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 18px 12px 12px;
+}
+.buddy-icon {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  box-shadow: 0 3px 0 var(--rim-lo), 0 10px 16px rgba(36, 56, 78, 0.16);
+  transform-origin: 50% 60%;
+  transition: transform 360ms var(--spring);
+}
+.buddy:hover .buddy-icon,
+.buddy:focus-within .buddy-icon,
+.buddy.is-open .buddy-icon {
+  transform: rotate(-7deg) scale(1.08);
+}
+.buddy-card:active .buddy-icon {
+  transform: rotate(4deg) scale(0.96);
+  transition-duration: var(--dur-press);
+}
+.buddy-text {
+  display: grid;
+  gap: 3px;
+  width: 168px;
+  min-width: 0;
+}
+.buddy-kicker {
+  font: 400 12px/1.2 var(--dot);
+  letter-spacing: 0.08em;
+  color: var(--dim);
+}
+.buddy-title {
+  font: 800 18px/1.1 var(--font);
+  color: var(--ink);
+}
+.buddy-sub {
+  font: 500 12.5px/1.35 var(--font);
+  color: var(--mute);
+}
+.buddy-go {
+  justify-self: start;
+  margin-top: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 10px 0 13px;
+  border-radius: 3px;
+  font: 700 13px var(--font);
+  color: #fff;
+  background: var(--buddy-tone);
+  box-shadow: inset 4px 0 0 rgba(255, 255, 255, 0.4), 2px 3px 0 rgba(0, 0, 0, 0.25);
+  transition: transform var(--dur-press) var(--ease-out), box-shadow var(--dur-press) var(--ease-out);
+}
+.buddy-go .icon {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.buddy-card:active .buddy-go {
+  transform: translate(2px, 3px);
+  box-shadow: inset 4px 0 0 rgba(255, 255, 255, 0.4), 0 0 0 rgba(0, 0, 0, 0.25);
+}
+.buddy-close {
+  position: absolute;
+  top: -10px;
+  left: 22px;
+  width: 24px;
+  height: 24px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #fff;
+  font: 700 14px/1 var(--font);
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity var(--dur-ui) var(--ease-out), transform 300ms var(--spring);
+}
+.buddy:hover .buddy-close,
+.buddy:focus-within .buddy-close,
+.buddy.is-open .buddy-close {
+  opacity: 1;
+  transform: scale(1);
+}
+.buddy-psst {
+  position: absolute;
+  left: 2px;
+  top: -36px;
+  padding: 2px 8px;
+  border-radius: 10px 10px 2px 10px;
+  background: var(--b);
+  color: var(--b-ink);
+  font: 700 18px/1.2 var(--hand);
+  transform: rotate(-6deg) scale(0);
+  transform-origin: 100% 100%;
+  transition: transform 420ms var(--spring);
+  pointer-events: none;
+}
+.buddy.is-psst .buddy-psst {
+  transform: rotate(-6deg) scale(1);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .buddy-icon {
+    animation: buddy-bob 3.6s ease-in-out infinite;
+  }
+  .buddy.is-wiggle .buddy-icon {
+    animation: buddy-wiggle 700ms var(--ease-out) 1;
+  }
+  .buddy.is-nudge {
+    transform: translateX(calc(100% - 92px));
+  }
+}
+@keyframes buddy-bob {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -3px; }
+}
+@keyframes buddy-wiggle {
+  0% { rotate: 0deg; }
+  20% { rotate: -9deg; }
+  45% { rotate: 7deg; }
+  70% { rotate: -4deg; }
+  100% { rotate: 0deg; }
+}
+@media (max-width: 640px) {
+  .buddy {
+    top: auto;
+    bottom: 84px;
+    transform: translateX(calc(100% - 34px));
+  }
+  .buddy.is-nudge {
+    transform: translateX(calc(100% - 54px));
+  }
+  .buddy-text {
+    width: 150px;
+  }
+}
