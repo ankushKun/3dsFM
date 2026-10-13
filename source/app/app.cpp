@@ -1194,7 +1194,7 @@ struct App::State {
         rows.push_back({"Keep playing with the lid closed", "", false, true, settings.keepPlayingLidClosed ? 1 : 0, "With this on, closing the lid turns the screens off and keeps the music going, like the console's own sound app. Open the lid and the screens come back."});
         rows.push_back({"Look", "", true, false, -1, ""});
         rows.push_back({"Dark mode", "", false, true, settings.darkMode ? 1 : 0, "Dark screens with light text. Off gives the white HOME Menu look. Either way the selection blue stays the same."});
-        rows.push_back({"Album art on the top screen", "", false, true, settings.artOnTopScreen ? 1 : 0, "Shows the focused album's art fogged into the top screen. Turn it off for a plain top screen that uses less battery on an Old 3DS."});
+        rows.push_back({"Full-screen album art", "", false, true, settings.artOnTopScreen ? 1 : 0, "On, the focused album's art fills the top screen behind the text. Off, it sits in a small sleeve on the left, which uses less battery on an Old 3DS."});
         rows.push_back({"Library", "", true, false, -1, ""});
         rows.push_back({"Music folder", settings.musicFolder, false, true, -1, "The folder 3dsFM scans for music. Albums are folders of songs; tags are read from MP3, Ogg, Opus and WAV files when they have them."});
         rows.push_back({"Rescan the Music folder", "", false, true, -1, "New files are picked up every time 3dsFM starts; this reads the tags of every file again, for when you have changed them."});
@@ -1214,7 +1214,7 @@ struct App::State {
             settings.darkMode = !settings.darkMode;
             settings.save();
             ui::setTheme(settings.darkMode);
-        } else if (label == "Album art on the top screen") {
+        } else if (label == "Full-screen album art") {
             settings.artOnTopScreen = !settings.artOnTopScreen;
             settings.save();
         } else if (label == "Music folder") {
@@ -1834,9 +1834,11 @@ struct App::State {
 
     void drawTopCorners(bool withRecent)
     {
-        // Top-left: recent covers and a count, or the scan state.
+        // Top-left: recent covers and a count, or the scan state. Views that
+        // write their own label there (Settings, Search, albums, Now Playing)
+        // pass false and keep the corner; the scan state shows on Home.
         const float ty = BandTopY - 5.0f; // 10 px text centred on the band
-        if (scanning) {
+        if (scanning && withRecent) {
             const std::string verb = library.tracks().empty() ? "Scanning · " : "Checking · ";
             ui::text(verb + std::to_string(scanScanned()) + " of " + std::to_string(scanCollected()), BoxX, ty, 10.0f, ui::Meta);
         } else if (withRecent) {
