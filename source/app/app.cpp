@@ -470,10 +470,12 @@ struct App::State {
     // the console is away, start them again when it comes back. A thread
     // that keeps working while the app is suspended can starve the HOME
     // Menu, and the DSP is handed over anyway.
-    // Playback is stopped outright, not paused: the decode thread is joined
-    // and the channel reset, so the DSP goes to sleep with nothing queued
-    // and no second-core thread touching it. The song picks up where it was
-    // on the next frame after the console comes back.
+    // Playback is stopped outright and NDSP shut down before the console is
+    // handed over, so libctru has no DSP to put to sleep and nothing to
+    // restore: the console log showed the DSP never playing again after its
+    // sleep and resume, and the next hand-over hanging on it. NDSP starts
+    // fresh on the first frame after the console comes back, and the song
+    // picks up where it was.
     aptHookCookie aptCookie{};
     bool resumeAfterSystem = false;
     double resumePosition = 0.0;
@@ -492,9 +494,13 @@ struct App::State {
             self->resumeAfterSystem = self->player.playing();
             self->resumePosition = self->player.positionSeconds();
             self->player.stop();
+            if (self->audioReady) {
+                audio::shutdown();
+                self->audioReady = false;
+            }
             self->handoverStarted = osGetTime();
             self->handoverActive = true;
-            platform::log("apt: playback stopped at %.1f s, handing the console over", self->resumePosition);
+            platform::log("apt: playback stopped at %.1f s and NDSP shut down, handing the console over", self->resumePosition);
             break;
         case APTHOOK_ONRESTORE:
         case APTHOOK_ONWAKEUP:
@@ -502,7 +508,7 @@ struct App::State {
             platform::log("apt: %s after %llu ms", hook == APTHOOK_ONRESTORE ? "restore" : "wakeup", (unsigned long long)(osGetTime() - self->handoverStarted));
             self->scanPaused = false;
             art::setPaused(false);
-            if (self->resumeAfterSystem) self->resumePending = true;
+            self->resumePending = true; // NDSP comes back on the next frame either way
             break;
         default:
             break;
@@ -515,7 +521,6 @@ struct App::State {
     {
         if (!resumePending) return;
         resumePending = false;
-        resumeAfterSystem = false;
         // The system hands the app's share of the second core back as zero
         // after a suspend, which leaves a decode thread there with no CPU
         // at all, so the share is asked for again before playback restarts.
@@ -525,7 +530,13 @@ struct App::State {
         u32 after = 0;
         APT_GetAppCpuTimeLimit(&after);
         platform::log("apt: second-core share %lu%% on return, set to %lu%% (%08lx)", (unsigned long)share, (unsigned long)after, (unsigned long)set);
-        if (nowTrack < 0 || nowTrack >= int(library.tracks().size())) return;
+        if (!audioReady) {
+            audioReady = audio::init(audioError);
+            platform::log("apt: NDSP %s", audioReady ? "started again" : ("failed to start: " + audioError).c_str());
+        }
+        const bool wanted = resumeAfterSystem;
+        resumeAfterSystem = false;
+        if (!wanted || nowTrack < 0 || nowTrack >= int(library.tracks().size())) return;
         const core::Track &t = library.tracks()[nowTrack];
         std::string error;
         if (!player.play(t.path, t.format, error)) {
@@ -941,12 +952,18 @@ struct App::State {
     // and the song restarts where it was.
     double stallPosition = -1.0;
     int stallFrames = 0;
+    int stallRecoveries = 0; // for the current song
+    int stallTrack = -1;
     void watchForStall()
     {
         if (!player.playing()) {
             stallFrames = 0;
             stallPosition = -1.0;
             return;
+        }
+        if (nowTrack != stallTrack) {
+            stallTrack = nowTrack;
+            stallRecoveries = 0;
         }
         const double pos = player.positionSeconds();
         if (pos != stallPosition) {
@@ -957,11 +974,30 @@ struct App::State {
         if (++stallFrames < 180) return;
         stallFrames = 0;
         if (nowTrack < 0 || nowTrack >= int(library.tracks().size())) return;
-        platform::log("audio: stalled at %.1f s, moving decoding to the app core", pos);
-        audio::setSecondCoreAllowed(false);
+        // First a plain restart on the app core; then NDSP itself is started
+        // again; after that the song is left alone rather than restarted
+        // every three seconds.
+        if (stallRecoveries >= 2) {
+            if (stallRecoveries == 2) platform::log("audio: still stalled at %.1f s after two restarts, leaving it", pos);
+            ++stallRecoveries;
+            return;
+        }
+        ++stallRecoveries;
         const core::Track &t = library.tracks()[nowTrack];
         std::string error;
         player.stop();
+        if (stallRecoveries == 1) {
+            platform::log("audio: stalled at %.1f s, restarting on the app core", pos);
+            audio::setSecondCoreAllowed(false);
+        } else {
+            platform::log("audio: stalled again at %.1f s, starting NDSP afresh", pos);
+            audio::shutdown();
+            audioReady = audio::init(audioError);
+            if (!audioReady) {
+                platform::log("audio: NDSP failed to start: %s", audioError.c_str());
+                return;
+            }
+        }
         if (player.play(t.path, t.format, error)) {
             if (pos > 1.0) player.seek(pos);
         } else {

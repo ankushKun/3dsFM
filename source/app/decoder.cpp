@@ -12,6 +12,68 @@ namespace audio {
 
 namespace {
 
+// Every decoder reads the card through one of these: a stdio stream with a
+// 64 KB buffer, so the SD card is asked for a large block a few times a
+// second instead of a few hundred bytes a few hundred times a second. That
+// is what keeps the music going while the scanner or the cover loader has
+// the card busy. The decoders' own reads then come from memory.
+constexpr size_t FileBufferSize = 64 * 1024;
+
+struct BufferedFile {
+    FILE *f = nullptr;
+    explicit BufferedFile(const std::string &path)
+    {
+        f = std::fopen(path.c_str(), "rb");
+        if (f != nullptr) std::setvbuf(f, nullptr, _IOFBF, FileBufferSize);
+    }
+    ~BufferedFile()
+    {
+        if (f != nullptr) std::fclose(f);
+    }
+    BufferedFile(const BufferedFile &) = delete;
+    BufferedFile &operator=(const BufferedFile &) = delete;
+};
+
+// mpg123's reader hooks.
+ssize_t bufferedRead(void *handle, void *buffer, size_t bytes)
+{
+    return ssize_t(std::fread(buffer, 1, bytes, static_cast<BufferedFile *>(handle)->f));
+}
+off_t bufferedSeek(void *handle, off_t offset, int whence)
+{
+    FILE *f = static_cast<BufferedFile *>(handle)->f;
+    if (std::fseek(f, long(offset), whence) != 0) return -1;
+    return off_t(std::ftell(f));
+}
+
+// Tremor's.
+size_t vorbisRead(void *ptr, size_t size, size_t count, void *source)
+{
+    return std::fread(ptr, size, count, static_cast<BufferedFile *>(source)->f);
+}
+int vorbisSeek(void *source, ogg_int64_t offset, int whence)
+{
+    return std::fseek(static_cast<BufferedFile *>(source)->f, long(offset), whence);
+}
+long vorbisTell(void *source)
+{
+    return std::ftell(static_cast<BufferedFile *>(source)->f);
+}
+
+// opusfile's.
+int opusRead(void *source, unsigned char *ptr, int bytes)
+{
+    return int(std::fread(ptr, 1, size_t(bytes), static_cast<BufferedFile *>(source)->f));
+}
+int opusSeek(void *source, opus_int64 offset, int whence)
+{
+    return std::fseek(static_cast<BufferedFile *>(source)->f, long(offset), whence);
+}
+opus_int64 opusTell(void *source)
+{
+    return std::ftell(static_cast<BufferedFile *>(source)->f);
+}
+
 class Mp3Decoder : public Decoder {
 public:
     ~Mp3Decoder() override
@@ -20,6 +82,7 @@ public:
             mpg123_close(handle_);
             mpg123_delete(handle_);
         }
+        file_.reset();
     }
 
     bool open(const std::string &path, std::string &error) override
@@ -37,7 +100,13 @@ public:
         }
         // Keep the decoder's own buffers small; the console has little RAM.
         mpg123_param(handle_, MPG123_FLAGS, MPG123_GAPLESS | MPG123_QUIET, 0.0);
-        if (mpg123_open(handle_, path.c_str()) != MPG123_OK) {
+        file_.reset(new BufferedFile(path));
+        if (file_->f == nullptr) {
+            error = "Could not open the file.";
+            return false;
+        }
+        mpg123_replace_reader_handle(handle_, bufferedRead, bufferedSeek, nullptr);
+        if (mpg123_open_handle(handle_, file_.get()) != MPG123_OK) {
             error = "Could not open the MP3.";
             return false;
         }
@@ -78,6 +147,7 @@ public:
 
 private:
     mpg123_handle *handle_ = nullptr;
+    std::unique_ptr<BufferedFile> file_;
     int rate_ = 44100;
 };
 
@@ -86,17 +156,18 @@ public:
     ~VorbisDecoder() override
     {
         if (opened_) ov_clear(&file_);
+        source_.reset();
     }
 
     bool open(const std::string &path, std::string &error) override
     {
-        FILE *f = std::fopen(path.c_str(), "rb");
-        if (f == nullptr) {
+        source_.reset(new BufferedFile(path));
+        if (source_->f == nullptr) {
             error = "Could not open the file.";
             return false;
         }
-        if (ov_open(f, &file_, nullptr, 0) < 0) {
-            std::fclose(f);
+        const ov_callbacks callbacks = {vorbisRead, vorbisSeek, nullptr, vorbisTell};
+        if (ov_open_callbacks(source_.get(), &file_, nullptr, 0, callbacks) < 0) {
             error = "Not an Ogg Vorbis file.";
             return false;
         }
@@ -143,6 +214,7 @@ public:
 
 private:
     OggVorbis_File file_{};
+    std::unique_ptr<BufferedFile> source_;
     bool opened_ = false;
     int rate_ = 44100;
     int channels_ = 2;
@@ -154,12 +226,19 @@ public:
     ~OpusDecoder() override
     {
         if (file_ != nullptr) op_free(file_);
+        source_.reset();
     }
 
     bool open(const std::string &path, std::string &error) override
     {
+        source_.reset(new BufferedFile(path));
+        if (source_->f == nullptr) {
+            error = "Could not open the file.";
+            return false;
+        }
         int code = 0;
-        file_ = op_open_file(path.c_str(), &code);
+        const OpusFileCallbacks callbacks = {opusRead, opusSeek, opusTell, nullptr};
+        file_ = op_open_callbacks(source_.get(), &callbacks, nullptr, 0, &code);
         if (file_ == nullptr) {
             error = "Not an Opus file.";
             return false;
@@ -186,6 +265,7 @@ public:
 
 private:
     OggOpusFile *file_ = nullptr;
+    std::unique_ptr<BufferedFile> source_;
 };
 
 class WavDecoder : public Decoder {
@@ -202,6 +282,7 @@ public:
             error = "Could not open the file.";
             return false;
         }
+        std::setvbuf(file_, nullptr, _IOFBF, FileBufferSize);
         uint8_t riff[12];
         if (std::fread(riff, 1, 12, file_) != 12 || std::memcmp(riff, "RIFF", 4) != 0 || std::memcmp(riff + 8, "WAVE", 4) != 0) {
             error = "Not a WAV file.";

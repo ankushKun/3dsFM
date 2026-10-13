@@ -5,6 +5,7 @@
 
 #include <3ds.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstring>
@@ -15,8 +16,11 @@ namespace audio {
 namespace {
 
 constexpr int Channel = 0;
-constexpr int BufferCount = 4;
-constexpr int FramesPerBuffer = 4096;
+// Six buffers of 8192 frames: about a second of sound queued ahead of
+// the DSP, so the card can be busy for most of a second before anything
+// is heard, and each fill is one large decode rather than many small ones.
+constexpr int BufferCount = 6;
+constexpr int FramesPerBuffer = 8192;
 constexpr int RecentSamples = 1024;
 constexpr size_t DecodeStackSize = 192 * 1024;
 
@@ -266,13 +270,16 @@ bool Player::finished()
 double Player::positionSeconds() const
 {
     if (!impl_->loaded) return 0.0;
-    // Decoded time minus whatever is still queued ahead of the DSP.
-    int queued = 0;
+    // Decoded time minus whatever is still ahead of the DSP: the queued
+    // buffers whole, and the rest of the one it is playing, read from its
+    // own sample counter so the position moves smoothly.
+    int ahead = 0;
     for (int i = 0; i < BufferCount; ++i) {
-        if (impl_->bufs[i].status == NDSP_WBUF_QUEUED) queued += int(impl_->bufs[i].nsamples);
+        const ndspWaveBuf &b = impl_->bufs[i];
+        if (b.status == NDSP_WBUF_QUEUED) ahead += int(b.nsamples);
+        else if (b.status == NDSP_WBUF_PLAYING) ahead += std::max(0, int(b.nsamples) - int(ndspChnGetSamplePos(Channel)));
     }
-    const double ahead = impl_->rate > 0 ? double(queued) / impl_->rate : 0.0;
-    const double p = impl_->decodedSeconds - ahead;
+    const double p = impl_->decodedSeconds - (impl_->rate > 0 ? double(ahead) / impl_->rate : 0.0);
     return p < 0.0 ? 0.0 : p;
 }
 
