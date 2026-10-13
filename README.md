@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 0.3.3" src="https://img.shields.io/badge/version-0.3.3-3a96eb?style=for-the-badge">
+  <img alt="Version 0.4.0" src="https://img.shields.io/badge/version-0.4.0-3a96eb?style=for-the-badge">
   <img alt="Nintendo 3DS" src="https://img.shields.io/badge/platform-Nintendo%203DS-e60012?style=for-the-badge">
   <img alt="GPLv3 license" src="https://img.shields.io/badge/license-GPLv3-56e39f?style=for-the-badge">
   <img alt="Active development" src="https://img.shields.io/badge/status-in%20development-ffc857?style=for-the-badge">
@@ -32,7 +32,7 @@ The 3DS has stereo speakers, a headphone jack, a clamshell that protects the scr
 It shares its toolchain, container build and release pipeline with [3dsDL](https://github.com/ankushKun/3dsDL), the 3DS downloader.
 
 > [!IMPORTANT]
-> Version 0.3.3 is a development build. Playback from the SD card works in the Azahar emulator and is being checked on a console; the tag reader, library scanner and play queue are covered by automated tests. Streaming from a server, saving songs and pairing have their screens in place but stay switched off until the server exists. The plan is in [docs/PLAN.md](docs/PLAN.md).
+> Version 0.4.0 is a development build. Playback from the SD card works in the Azahar emulator and is being checked on a console; the tag reader, library scanner and play queue are covered by automated tests. Streaming from a server, saving songs and pairing have their screens in place but stay switched off until the server exists. The plan is in [docs/PLAN.md](docs/PLAN.md).
 
 ## ✨ Features
 
@@ -40,7 +40,7 @@ It shares its toolchain, container build and release pipeline with [3dsDL](https
   <tr>
     <td width="50%" valign="top">
       <h4>📂 Albums from folders</h4>
-      Drop albums under <code>sdmc:/Music</code>, one folder each. Tags come from ID3v1 and ID3v2, Vorbis comments and WAV INFO chunks; untagged files take their title from the file name and their album and artist from the folders. The scan is saved as an index on the card, so only new files are read on later launches.
+      Drop albums under <code>sdmc:/Music</code>, one folder each. Tags come from ID3v1 and ID3v2, Vorbis comments and WAV INFO chunks; untagged files take their title from the file name and their album and artist from the folders. The scan is saved as an index on the card: the next launch shows the whole library from it at once and only reads files that are new.
     </td>
     <td width="50%" valign="top">
       <h4>🎧 Four formats</h4>
@@ -133,7 +133,7 @@ sdmc:/Music/Miki Matsubara/Pocket Park/01 - Mayonaka no Door.mp3
 sdmc:/Music/Miki Matsubara/Pocket Park/cover.jpg
 ```
 
-A folder whose songs have different artists is shown as a playlist with a mosaic of its covers. Launch 3dsFM and it scans the folder; after copying new music, pick **Rescan the Music folder** in Settings.
+A folder whose songs have different artists is shown as a playlist with a mosaic of its covers. The first launch reads every file, which takes a while for a big library; after that the library appears at once from the index on the card and new files are picked up in the background. After editing tags, pick **Rescan the Music folder** in Settings.
 
 1. The bottom screen opens on **Home**, the albums. Tabs along the bottom switch to **Songs**, **Artists**, **Up next** and **Downloads**; the round buttons open **Search**, **Now Playing** and **Settings**.
 2. Pick an album, then a song. The top screen shows what is playing, with the art fogged behind it.
@@ -175,8 +175,8 @@ Shuffle, repeat and the visualizer style are set from Now Playing and remembered
 | --- | --- |
 | `sdmc:/Music/` | Your albums, one folder each (the folder is a setting). |
 | `sdmc:/3ds/3dsFM/settings.ini` | Settings, including shuffle, repeat and the visualizer style. |
-| `sdmc:/3ds/3dsFM/library.idx` | The library index: every song's tags from the last scan, so the next launch reads no music files. Delete it to force a full scan. |
-| `sdmc:/3ds/3dsFM/log.txt` | A short log of scans and playback, handy when reporting a bug. |
+| `sdmc:/3ds/3dsFM/library.idx` | The library index: every song's tags and cover file from the last scan. The next launch builds the library from it before reading any music file. Delete it to force a full scan. |
+| `sdmc:/3ds/3dsFM/log.txt` | A log of launches, scans, HOME Menu hand-overs and playback. It is kept across launches so a freeze leaves its last lines behind, and starts over past 256 KB. Attach it when reporting a bug. |
 | `sdmc:/3ds/dspfirm.cdc` | The DSP firmware NDSP needs. Without it 3dsFM runs silently and says so. |
 
 ## 🛠️ Building
@@ -292,7 +292,7 @@ Install devkitARM, libctru, Citro2D, Citro3D, 3ds-mpg123, 3ds-libopus, 3ds-opusf
 
 Building the same commit twice gives a byte-identical `3dsFM.3dsx`. The CIA is identical too, except for the ticket ID, title key and content ID that makerom randomises on every run; the packaged app inside it does not change.
 
-GitHub Actions runs the tests and the container build on every push and pull request and keeps `dist/` as a build artifact. To release, bump `VERSION`, commit, and push a matching tag such as `v0.3.3`. The workflow checks that the tag matches, verifies the checksums and publishes the release, which the website's QR codes point at through `releases/latest/download/`.
+GitHub Actions runs the tests and the container build on every push and pull request and keeps `dist/` as a build artifact. To release, bump `VERSION`, commit, and push a matching tag such as `v0.4.0`. The workflow checks that the tag matches, verifies the checksums and publishes the release, which the website's QR codes point at through `releases/latest/download/`.
 
 </details>
 
@@ -326,7 +326,7 @@ docs/            design system and the build plan
 site/            the website, published by GitHub Pages (see site/README.md)
 ```
 
-Anything that can run without a console lives in `source/core` and has a test. Anything that touches libctru lives in `source/app`. The UI runs on the main thread, audio decoding on the second core when the system allows it, and album art decoding and the library scan on low-priority threads that only use the time the UI spends waiting for vsync.
+Anything that can run without a console lives in `source/core` and has a test. Anything that touches libctru lives in `source/app`. The UI runs on the main thread, audio decoding on the second core when the system allows it, and album art decoding and the library scan on threads two priority steps below the UI, under libctru's own APT handler thread, so they only use the time the UI spends waiting for vsync and never hold up the HOME button. All of them go idle while the console is in the HOME Menu or asleep.
 
 </details>
 

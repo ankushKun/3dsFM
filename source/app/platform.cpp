@@ -62,7 +62,16 @@ void init()
     makeDirectories(AppDir);
     ptmReady = R_SUCCEEDED(ptmuInit());
     lcdReady = R_SUCCEEDED(gspLcdInit());
-    std::remove((std::string(AppDir) + "/log.txt").c_str());
+    // The log survives a restart so a freeze or crash leaves its last lines
+    // behind; it starts over once it grows past a quarter megabyte.
+    const std::string logPath = std::string(AppDir) + "/log.txt";
+    struct stat st {};
+    if (stat(logPath.c_str(), &st) == 0 && st.st_size > 256 * 1024) std::remove(logPath.c_str());
+    const bool newModel = []() {
+        bool n3ds = false;
+        return R_SUCCEEDED(APT_CheckNew3DS(&n3ds)) && n3ds;
+    }();
+    log("---- 3dsFM %s started (%s, %s)", APP_VERSION, newModel ? "New 3DS" : "Old 3DS", envIsHomebrew() ? "homebrew launcher" : "title");
 }
 
 void shutdown()
@@ -128,19 +137,24 @@ bool readTextFile(const std::string &path, std::string &out)
 
 bool writeTextFile(const std::string &path, const std::string &text)
 {
-    // Written beside the target and renamed over it, so a power cut in the
-    // middle leaves the old file rather than half a new one.
-    const std::string temp = path + ".tmp";
-    FILE *f = std::fopen(temp.c_str(), "wb");
-    if (f == nullptr) return false;
+    // Written straight to its name. An earlier version wrote a temporary
+    // file and renamed it over the target; the index then never seemed to
+    // survive a restart on a console, while plain writes (the log, the
+    // settings) did. The readers tolerate a torn line, so a power cut in
+    // the middle costs at most the tail of the file.
+    FILE *f = std::fopen(path.c_str(), "wb");
+    if (f == nullptr) {
+        log("write failed: could not create %s", path.c_str());
+        return false;
+    }
     const bool ok = std::fwrite(text.data(), 1, text.size(), f) == text.size();
     std::fclose(f);
     if (!ok) {
-        std::remove(temp.c_str());
+        log("write failed: short write to %s", path.c_str());
+        std::remove(path.c_str());
         return false;
     }
-    std::remove(path.c_str());
-    return std::rename(temp.c_str(), path.c_str()) == 0;
+    return true;
 }
 
 bool fileExists(const std::string &path)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -50,6 +51,10 @@ public:
 
     // The tracks in playback order, starting from the current one.
     std::vector<const Item *> upcoming() const;
+
+    // Points every item at its track in a rebuilt library. An item whose
+    // track is gone (newIndex returns -1) leaves the queue.
+    void remap(const std::function<int(const Item &)> &newIndex);
 
 private:
     std::size_t orderIndex() const;

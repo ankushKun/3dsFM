@@ -1,6 +1,7 @@
 #include "audio.hpp"
 
 #include "decoder.hpp"
+#include "platform.hpp"
 
 #include <3ds.h>
 
@@ -17,8 +18,10 @@ constexpr int Channel = 0;
 constexpr int BufferCount = 4;
 constexpr int FramesPerBuffer = 4096;
 constexpr int RecentSamples = 1024;
+constexpr size_t DecodeStackSize = 192 * 1024;
 
 bool dspReady = false;
+bool loggedCore = false;
 
 } // namespace
 
@@ -122,10 +125,18 @@ struct Player::Impl {
         running = true;
         // Decoding runs on the second core when the system lets us have it
         // (New 3DS, or an Old 3DS with the app CPU limit set), else core 0.
+        // libopus and mpg123 keep sizeable working sets on the stack, so the
+        // thread gets far more than the 32 KB it once had.
         s32 prio = 0;
         svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
-        thread = threadCreate(entry, this, 32 * 1024, prio - 1, 1, false);
-        if (thread == nullptr) thread = threadCreate(entry, this, 32 * 1024, prio - 1, -2, false);
+        thread = threadCreate(entry, this, DecodeStackSize, prio - 1, 1, false);
+        if (thread == nullptr) {
+            thread = threadCreate(entry, this, DecodeStackSize, prio - 1, -2, false);
+            if (!loggedCore) platform::log("audio: decoding on the app core");
+        } else if (!loggedCore) {
+            platform::log("audio: decoding on the second core");
+        }
+        loggedCore = true;
     }
 
     void stopThread()

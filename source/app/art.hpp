@@ -36,6 +36,8 @@ bool makeTexture(const uint8_t *rgba, int width, int height, C3D_Tex &tex, Tex3D
 // turned into textures on the main thread, one per frame.
 void startLoader();
 void stopLoader();
+// Keeps the loader idle while the console is away in the HOME Menu or asleep.
+void setPaused(bool paused);
 // `embedded` means the picture is inside the audio file at `path`.
 void request(const std::string &key, const std::string &path, bool embedded);
 // Takes one finished decode, if any. Returns false when nothing is ready.

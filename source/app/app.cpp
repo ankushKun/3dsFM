@@ -16,6 +16,7 @@
 #include <cmath>
 #include <cstdio>
 #include <functional>
+#include <unordered_map>
 #include <map>
 #include <string>
 #include <vector>
@@ -373,6 +374,11 @@ struct App::State {
     core::Library *scanLibrary = nullptr;
     Thread scanThread = nullptr;
     volatile bool scanDone = false;
+    // What the index on the card knew when the scan started. The library is
+    // built from it straight away; the thread uses it to skip known files.
+    std::vector<core::Track> scanKnown;
+    std::vector<core::Cover> scanKnownCovers;
+    bool libraryFromIndex = false;
     std::atomic<bool> scanPaused{false}; // while the HOME Menu or sleep has the console
     std::atomic<bool> scanAbort{false};
     std::atomic<int> scanProgress{0};
@@ -385,14 +391,7 @@ struct App::State {
         lib.collect(self->settings.musicFolder, platform::listDirectory);
         self->scanTotal = lib.collectedCount();
         platform::log("scan: %d files under %s", lib.collectedCount(), self->settings.musicFolder.c_str());
-        if (!self->scanFull) {
-            std::string text;
-            std::vector<core::Track> known;
-            if (platform::readTextFile(platform::IndexPath, text) && core::decodeIndex(text, known)) {
-                lib.useIndex(known);
-                platform::log("scan: index knows %d tracks", int(known.size()));
-            }
-        }
+        if (!self->scanFull && !self->scanKnown.empty()) lib.useIndex(self->scanKnown);
         int fresh = 0; // tags read since the index was last written
         int reused = 0;
         bool more = true;
@@ -404,15 +403,15 @@ struct App::State {
             more = lib.step(platform::readTagsFromFile, 1);
             self->scanProgress = lib.scannedCount();
             if (lib.reusedCount() == reused) ++fresh; else reused = lib.reusedCount();
-            if (fresh >= 50) {
-                platform::writeTextFile(platform::IndexPath, core::encodeIndex(lib.tracks()));
+            if (fresh >= 20) {
+                platform::writeTextFile(platform::IndexPath, core::encodeIndex(lib.tracks(), lib.looseCovers()));
                 fresh = 0;
             }
         }
         if (!self->scanAbort) {
             lib.build();
-            platform::writeTextFile(platform::IndexPath, core::encodeIndex(lib.tracks()));
-            platform::log("scan: %d tracks, %d from the index", int(lib.tracks().size()), lib.reusedCount());
+            const bool saved = platform::writeTextFile(platform::IndexPath, core::encodeIndex(lib.tracks(), lib.looseCovers()));
+            platform::log("scan: %d tracks, %d from the index, index %s", int(lib.tracks().size()), lib.reusedCount(), saved ? "saved" : "NOT saved");
         }
         self->scanDone = true;
     }
@@ -429,13 +428,18 @@ struct App::State {
         switch (hook) {
         case APTHOOK_ONSUSPEND:
         case APTHOOK_ONSLEEP:
+            platform::log("apt: %s (playing %d, scanning %d)", hook == APTHOOK_ONSUSPEND ? "suspend" : "sleep", self->player.playing() ? 1 : 0, self->scanning ? 1 : 0);
             self->scanPaused = true;
+            art::setPaused(true);
             self->resumeAfterSystem = self->player.playing();
             if (self->resumeAfterSystem) self->player.pause();
+            platform::log("apt: handing the console over");
             break;
         case APTHOOK_ONRESTORE:
         case APTHOOK_ONWAKEUP:
+            platform::log("apt: %s", hook == APTHOOK_ONRESTORE ? "restore" : "wakeup");
             self->scanPaused = false;
+            art::setPaused(false);
             if (self->resumeAfterSystem) {
                 self->resumeAfterSystem = false;
                 self->player.resume();
@@ -595,13 +599,36 @@ struct App::State {
         scanLibrary = nullptr;
     }
 
+    // Starts with whatever the index on the card knows, so the library is
+    // there to browse and play at once, then checks the folder for changes
+    // on the scan thread. A full scan ignores the index and reads every file.
     void startScan(bool full = false)
     {
         finishScanThread();
-        library.clear();
+        scanKnown.clear();
+        scanKnownCovers.clear();
+        libraryFromIndex = false;
+        if (!full) {
+            std::string text;
+            const bool found = platform::readTextFile(platform::IndexPath, text) || platform::readTextFile(std::string(platform::IndexPath) + ".tmp", text);
+            if (!found) {
+                platform::log("index: none at %s", platform::IndexPath);
+            } else if (!core::decodeIndex(text, scanKnown, scanKnownCovers) || scanKnown.empty()) {
+                platform::log("index: unreadable or empty (%d bytes)", int(text.size()));
+                scanKnown.clear();
+                scanKnownCovers.clear();
+            } else {
+                library.loadFromIndex(scanKnown, scanKnownCovers);
+                libraryFromIndex = true;
+                platform::log("index: %d tracks, %d albums, %d covers loaded", int(library.tracks().size()), int(library.albums().size()), int(scanKnownCovers.size()));
+            }
+        }
+        if (!libraryFromIndex) {
+            library.clear();
+            for (auto &entry : art) art::release(entry.second);
+            art.clear();
+        }
         allTracksDirty = true;
-        for (auto &entry : art) art::release(entry.second);
-        art.clear();
         emptyDialogShown = false;
         scanLibrary = new core::Library;
         scanFull = full;
@@ -611,12 +638,18 @@ struct App::State {
         scanProgress = 0;
         scanTotal = 0;
         scanning = true;
+        // Two steps below the UI thread, under libctru's APT handler thread,
+        // so the HOME button is never waiting on a tag read.
         s32 prio = 0;
         svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
-        scanThread = threadCreate(scanEntry, this, 64 * 1024, prio + 1, -2, false);
+        scanThread = threadCreate(scanEntry, this, 128 * 1024, prio + 2, -2, false);
+        if (scanThread == nullptr) scanThread = threadCreate(scanEntry, this, 64 * 1024, prio + 2, -2, false);
         if (scanThread == nullptr) {
-            // No thread: scan inline (slow start, but it still works).
-            scanEntry(this);
+            platform::log("scan: could not start the scan thread");
+            delete scanLibrary;
+            scanLibrary = nullptr;
+            scanning = false;
+            toast("Could not start the music scan");
         }
     }
 
@@ -627,11 +660,30 @@ struct App::State {
     {
         if (!scanning) return;
         if (!scanDone) return;
-        library = std::move(*scanLibrary);
+        core::Library &fresh = *scanLibrary;
+        const bool unchanged = libraryFromIndex && core::encodeIndex(fresh.tracks(), fresh.looseCovers()) == core::encodeIndex(library.tracks(), library.looseCovers());
+        if (unchanged) {
+            platform::log("scan done: nothing changed, %d tracks", int(library.tracks().size()));
+        } else {
+            // Take the new library, then point the queue and the current
+            // song at their tracks by path; a song whose file is gone drops
+            // out of the queue (its playback carries on to the end).
+            const std::string nowPath = nowTrack >= 0 && nowTrack < int(library.tracks().size()) ? library.tracks()[nowTrack].path : "";
+            library = std::move(fresh);
+            std::unordered_map<std::string, int> byPath;
+            for (int i = 0; i < int(library.tracks().size()); ++i) byPath[library.tracks()[i].path] = i;
+            queue.remap([&](const core::Item &item) {
+                const auto it = byPath.find(item.id);
+                return it == byPath.end() ? -1 : it->second;
+            });
+            const auto now = byPath.find(nowPath);
+            nowTrack = now == byPath.end() ? -1 : now->second;
+            allTracksDirty = true;
+            platform::log("scan done: %d tracks, %d albums", int(library.tracks().size()), int(library.albums().size()));
+        }
         finishScanThread();
         scanning = false;
-        allTracksDirty = true;
-        platform::log("scan done: %d tracks, %d albums", int(library.tracks().size()), int(library.albums().size()));
+        libraryFromIndex = false;
         if (library.tracks().empty() && !emptyDialogShown) {
             emptyDialogShown = true;
             dialog("No music found", "Put folders of MP3, Ogg, Opus or WAV files under " + settings.musicFolder + " on the SD card, then rescan.", "Rescan", "OK", [this](bool primary) {
@@ -1077,7 +1129,7 @@ struct App::State {
                 player.stop();
                 queue.clear();
                 nowTrack = -1;
-                startScan();
+                startScan(true);
             }
         } else if (label == "Rescan the Music folder") {
             player.stop();
@@ -1705,7 +1757,8 @@ struct App::State {
         // Top-left: recent covers and a count, or the scan state.
         const float ty = BandTopY - 5.0f; // 10 px text centred on the band
         if (scanning) {
-            ui::text("Scanning · " + std::to_string(scanScanned()) + " of " + std::to_string(scanCollected()), BoxX, ty, 10.0f, ui::Meta);
+            const std::string verb = library.tracks().empty() ? "Scanning · " : "Checking · ";
+            ui::text(verb + std::to_string(scanScanned()) + " of " + std::to_string(scanCollected()), BoxX, ty, 10.0f, ui::Meta);
         } else if (withRecent) {
             const int n = int(library.albums().size());
             float x = BoxX;

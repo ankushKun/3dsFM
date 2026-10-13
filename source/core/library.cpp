@@ -166,33 +166,47 @@ bool Library::step(const TagReader &reader, int count)
             // compilation in one folder stays together.
             t.albumKey = toLowerAscii(t.album) + "|" + toLowerAscii(tags.album.empty() ? p.folder : t.albumArtist);
         }
-        tracks_.push_back(std::move(t));
-
-        // Remember the album's folder and year while we have the tags.
-        const Track &track = tracks_.back();
-        const int index = albumIndex(track.albumKey);
-        if (index < 0) {
-            Album a;
-            a.key = track.albumKey;
-            a.title = track.album;
-            a.artist = track.albumArtist;
-            a.year = track.year;
-            a.folder = p.folder;
-            albums_.push_back(std::move(a));
-        } else if (albums_[index].year.empty()) {
-            albums_[index].year = track.year;
-        }
+        addTrack(std::move(t), p.folder);
     }
     return scanned_ < int(pending_.size());
 }
 
-// Index format: a header line, then one track per line with fields separated
-// by tabs (tabs and newlines inside a field become spaces). Fields: path,
-// format, title, artist, album, album artist, year, album key, track number,
-// duration, has embedded art, art hash (hex).
+void Library::addTrack(Track track, const std::string &folder)
+{
+    tracks_.push_back(std::move(track));
+    // Remember the album's folder and year while we have the tags.
+    const Track &t = tracks_.back();
+    const int index = albumIndex(t.albumKey);
+    if (index < 0) {
+        Album a;
+        a.key = t.albumKey;
+        a.title = t.album;
+        a.artist = t.albumArtist;
+        a.year = t.year;
+        a.folder = folder;
+        albums_.push_back(std::move(a));
+    } else if (albums_[index].year.empty()) {
+        albums_[index].year = t.year;
+    }
+}
+
+void Library::loadFromIndex(const std::vector<Track> &tracks, const std::vector<Cover> &covers)
+{
+    clear();
+    for (const Track &t : tracks) addTrack(t, parentFolder(t.path));
+    looseCovers_ = covers;
+    build();
+}
+
+// Index format: a header line, then one line per track with fields
+// separated by tabs (tabs and newlines inside a field become spaces):
+// path, format, title, artist, album, album artist, year, album key, track
+// number, duration, has embedded art, art hash (hex). A cover file is a
+// line of "cover", its folder and its path. Version 1 had no cover lines.
 namespace {
 
-const char *const IndexHeader = "3dsFM library index 1";
+const char *const IndexHeader = "3dsFM library index 2";
+const char *const IndexHeaderV1 = "3dsFM library index 1";
 
 std::string indexField(const std::string &s)
 {
@@ -205,7 +219,7 @@ std::string indexField(const std::string &s)
 
 } // namespace
 
-std::string encodeIndex(const std::vector<Track> &tracks)
+std::string encodeIndex(const std::vector<Track> &tracks, const std::vector<Cover> &covers)
 {
     std::string out = IndexHeader;
     out += '\n';
@@ -227,12 +241,22 @@ std::string encodeIndex(const std::vector<Track> &tracks)
         out += number;
         out += '\n';
     }
+    for (const Cover &c : covers) {
+        out += "cover\t" + indexField(c.first) + '\t' + indexField(c.second) + '\n';
+    }
     return out;
 }
 
-bool decodeIndex(const std::string &text, std::vector<Track> &out)
+bool decodeIndex(const std::string &text, std::vector<Track> &tracks)
 {
-    out.clear();
+    std::vector<Cover> covers;
+    return decodeIndex(text, tracks, covers);
+}
+
+bool decodeIndex(const std::string &text, std::vector<Track> &tracks, std::vector<Cover> &covers)
+{
+    tracks.clear();
+    covers.clear();
     size_t pos = 0;
     auto nextLine = [&](std::string &line) {
         if (pos >= text.size()) return false;
@@ -244,7 +268,7 @@ bool decodeIndex(const std::string &text, std::vector<Track> &out)
         return true;
     };
     std::string line;
-    if (!nextLine(line) || line != IndexHeader) return false;
+    if (!nextLine(line) || (line != IndexHeader && line != IndexHeaderV1)) return false;
     while (nextLine(line)) {
         if (line.empty()) continue;
         std::vector<std::string> fields;
@@ -254,6 +278,10 @@ bool decodeIndex(const std::string &text, std::vector<Track> &out)
             fields.push_back(line.substr(start, tab == std::string::npos ? std::string::npos : tab - start));
             if (tab == std::string::npos) break;
             start = tab + 1;
+        }
+        if (fields.size() == 3 && fields[0] == "cover") {
+            if (!fields[1].empty() && !fields[2].empty()) covers.emplace_back(fields[1], fields[2]);
+            continue;
         }
         if (fields.size() != 12) continue;
         Track t;
@@ -270,7 +298,7 @@ bool decodeIndex(const std::string &text, std::vector<Track> &out)
         t.hasEmbeddedArt = fields[10] == "1";
         t.artHash = std::strtoull(fields[11].c_str(), nullptr, 16);
         if (t.path.empty() || t.albumKey.empty()) continue;
-        out.push_back(std::move(t));
+        tracks.push_back(std::move(t));
     }
     return true;
 }

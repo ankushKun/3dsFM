@@ -275,3 +275,41 @@ TEST("a corrupt index is rejected and a field with a tab survives")
     CHECK_EQ(out.size(), size_t(1));
     CHECK_EQ(out[0].title, std::string("Tab here"));
 }
+
+TEST("the library rebuilds itself from the index alone, covers included")
+{
+    FakeFs fs = sampleFs();
+    Library first = scanned(fs);
+    const std::string text = encodeIndex(first.tracks(), first.looseCovers());
+    CHECK(!first.looseCovers().empty());
+
+    std::vector<Track> tracks;
+    std::vector<Cover> covers;
+    CHECK(decodeIndex(text, tracks, covers));
+    CHECK_EQ(covers.size(), first.looseCovers().size());
+
+    Library fromIndex;
+    fromIndex.loadFromIndex(tracks, covers);
+    CHECK_EQ(fromIndex.tracks().size(), first.tracks().size());
+    CHECK_EQ(fromIndex.albums().size(), first.albums().size());
+    CHECK(!fromIndex.scanning());
+    for (size_t i = 0; i < first.albums().size(); ++i) {
+        const Album &a = first.albums()[i];
+        const Album &b = fromIndex.albums()[i];
+        CHECK_EQ(b.title, a.title);
+        CHECK_EQ(b.artist, a.artist);
+        CHECK_EQ(b.folder, a.folder);
+        CHECK_EQ(b.artPath, a.artPath);
+        CHECK_EQ(b.artIsEmbedded, a.artIsEmbedded);
+        CHECK_EQ(b.tracks.size(), a.tracks.size());
+        CHECK_EQ(b.isPlaylist, a.isPlaylist);
+    }
+    // An unchanged library encodes to the same bytes, which is how the app
+    // knows a background check found nothing new.
+    CHECK_EQ(encodeIndex(fromIndex.tracks(), fromIndex.looseCovers()), text);
+    // A version 1 index, without cover lines, still loads.
+    std::string v1 = text;
+    v1.replace(0, std::string("3dsFM library index 2").size(), "3dsFM library index 1");
+    CHECK(decodeIndex(v1, tracks, covers));
+    CHECK_EQ(tracks.size(), first.tracks().size());
+}

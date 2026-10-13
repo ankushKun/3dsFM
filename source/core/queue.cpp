@@ -174,4 +174,12 @@ bool PlayQueue::removeAt(std::size_t index)
     return true;
 }
 
+void PlayQueue::remap(const std::function<int(const Item &)> &newIndex)
+{
+    for (Item &t : tracks_) t.libraryIndex = newIndex(t);
+    for (std::size_t i = tracks_.size(); i-- > 0;) {
+        if (tracks_[i].libraryIndex < 0) removeAt(i);
+    }
+}
+
 } // namespace core

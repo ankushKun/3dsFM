@@ -302,6 +302,7 @@ std::deque<Request> pendingRequests;
 std::deque<Decoded> finishedDecodes;
 Thread loaderThread = nullptr;
 volatile bool loaderRunning = false;
+volatile bool loaderPaused = false;
 
 bool decodeToRgba(const uint8_t *data, size_t size, std::vector<uint8_t> &rgba)
 {
@@ -320,6 +321,12 @@ bool decodeToRgba(const uint8_t *data, size_t size, std::vector<uint8_t> &rgba)
 void loaderMain(void *)
 {
     while (loaderRunning) {
+        if (loaderPaused) {
+            // The HOME Menu or sleep has the console: stay off the SD card
+            // and the CPU until the app is back.
+            svcSleepThread(100 * 1000 * 1000);
+            continue;
+        }
         Request job;
         bool have = false;
         LightLock_Lock(&loaderLock);
@@ -360,9 +367,17 @@ void startLoader()
     loaderRunning = true;
     s32 prio = 0;
     svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
-    // Lower priority than the UI thread on the same core: it only runs while
-    // the UI waits for the next frame.
-    loaderThread = threadCreate(loaderMain, nullptr, 64 * 1024, prio + 1, -2, false);
+    // Two steps below the UI thread on the same core: it only runs while the
+    // UI waits for the next frame, and it never competes with libctru's APT
+    // handler thread, which sits one step below the UI and carries the HOME
+    // button and sleep messages.
+    loaderThread = threadCreate(loaderMain, nullptr, 128 * 1024, prio + 2, -2, false);
+    if (loaderThread == nullptr) platform::log("art: could not start the loader thread");
+}
+
+void setPaused(bool paused)
+{
+    loaderPaused = paused;
 }
 
 void stopLoader()

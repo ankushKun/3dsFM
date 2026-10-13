@@ -58,11 +58,15 @@ struct Album {
     std::vector<int> mosaicTracks;
 };
 
-// The on-disk index: the tracks of the last scan, so the next launch reads
-// no tags for files it has already seen. One line per track; see the .cpp
-// for the format.
-std::string encodeIndex(const std::vector<Track> &tracks);
-bool decodeIndex(const std::string &text, std::vector<Track> &out);
+// A loose cover picture: the folder it sits in and its path.
+using Cover = std::pair<std::string, std::string>;
+
+// The on-disk index: the tracks and cover files of the last scan, so the
+// next launch can show the whole library before it reads a single music
+// file. One line per track or cover; see the .cpp for the format.
+std::string encodeIndex(const std::vector<Track> &tracks, const std::vector<Cover> &covers = {});
+bool decodeIndex(const std::string &text, std::vector<Track> &tracks, std::vector<Cover> &covers);
+bool decodeIndex(const std::string &text, std::vector<Track> &tracks);
 
 class Library {
 public:
@@ -78,6 +82,9 @@ public:
     // (it is also safe to call in between for a partial view).
     void build();
     void clear();
+    // The whole library straight from the index, with no folder listing and
+    // no tag reads: the state of the last scan, ready to browse and play.
+    void loadFromIndex(const std::vector<Track> &tracks, const std::vector<Cover> &covers);
 
     int collectedCount() const { return int(pending_.size()); }
     int scannedCount() const { return scanned_; }
@@ -87,6 +94,7 @@ public:
 
     const std::vector<Track> &tracks() const { return tracks_; }
     const std::vector<Album> &albums() const { return albums_; }
+    const std::vector<Cover> &looseCovers() const { return looseCovers_; }
     std::vector<std::string> artists() const;
     std::vector<int> albumsByArtist(const std::string &artist) const;
     const Album *albumOf(int trackIndex) const;
@@ -99,6 +107,7 @@ public:
     int totalDurationSeconds() const;
 
 private:
+    void addTrack(Track track, const std::string &folder);
     struct Pending {
         std::string path;
         std::string folder;
@@ -111,7 +120,7 @@ private:
     int reused_ = 0;
     std::vector<Track> tracks_;
     std::vector<Album> albums_;
-    std::vector<std::pair<std::string, std::string>> looseCovers_; // folder, path
+    std::vector<Cover> looseCovers_;
 };
 
 // Helpers shared with the UI.

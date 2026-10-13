@@ -141,3 +141,22 @@ TEST("removing a track keeps the cursor on the right song")
     CHECK(queue.removeAt(0));
     CHECK(queue.current() == nullptr);
 }
+
+TEST("remapping after a library change keeps the song and drops lost files")
+{
+    PlayQueue queue = fourTracks();
+    queue.jumpTo(1);
+    // The library was rebuilt: t1 and t2 moved, t3's file is gone.
+    queue.remap([](const Item &item) {
+        if (item.id == "t1") return 10;
+        if (item.id == "t2") return 11;
+        if (item.id == "t4") return 12;
+        return -1;
+    });
+    CHECK_EQ(queue.size(), static_cast<std::size_t>(3));
+    CHECK_EQ(currentId(queue), std::string("t2"));
+    CHECK_EQ(queue.current()->libraryIndex, 11);
+    CHECK(queue.next(true));
+    CHECK_EQ(currentId(queue), std::string("t4"));
+    CHECK_EQ(queue.current()->libraryIndex, 12);
+}
