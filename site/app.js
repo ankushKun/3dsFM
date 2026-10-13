@@ -758,30 +758,18 @@
 
 // The buddy card on the right edge: the sibling app, peeking in. Hover
 // opens it on a pointer; a tap on its tab opens and closes it on touch.
-// It gives one handwritten "psst!" after the page has settled, wiggles its
-// icon every so often, and hides for the rest of the visit when closed.
+// It gives one handwritten "psst!" after the page has settled and wiggles
+// its icon every so often.
 (function () {
   "use strict";
   var buddy = document.getElementById("buddy");
   if (!buddy) return;
   var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  try {
-    if (sessionStorage.getItem("buddy-hidden") === "1") {
-      buddy.classList.add("is-hidden");
-      return;
-    }
-  } catch (e) { /* storage may be off; the card simply shows */ }
-
   var tab = buddy.querySelector(".buddy-tab");
-  var close = buddy.querySelector(".buddy-close");
   tab.addEventListener("click", function (event) {
     event.preventDefault();
     buddy.classList.toggle("is-open");
     buddy.classList.remove("is-psst");
-  });
-  close.addEventListener("click", function () {
-    buddy.classList.add("is-hidden");
-    try { sessionStorage.setItem("buddy-hidden", "1"); } catch (e) { /* fine */ }
   });
   buddy.addEventListener("pointerenter", function () { buddy.classList.remove("is-psst"); });
   if (location.search.indexOf("buddy=open") !== -1) buddy.classList.add("is-open");

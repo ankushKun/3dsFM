@@ -2489,7 +2489,7 @@ dialog::backdrop {
 .buddy {
   position: fixed;
   right: 0;
-  top: 46%;
+  top: calc(var(--head-h) + 26px);
   z-index: 12;
   transform: translateX(calc(100% - 70px));
   transition: transform 420ms var(--spring);
@@ -2604,28 +2604,6 @@ dialog::backdrop {
   transform: translate(2px, 3px);
   box-shadow: inset 4px 0 0 rgba(255, 255, 255, 0.4), 0 0 0 rgba(0, 0, 0, 0.25);
 }
-.buddy-close {
-  position: absolute;
-  top: -10px;
-  left: 22px;
-  width: 24px;
-  height: 24px;
-  border: 2px solid #fff;
-  border-radius: 999px;
-  background: var(--ink);
-  color: #fff;
-  font: 700 14px/1 var(--font);
-  cursor: pointer;
-  opacity: 0;
-  transform: scale(0.6);
-  transition: opacity var(--dur-ui) var(--ease-out), transform 300ms var(--spring);
-}
-.buddy:hover .buddy-close,
-.buddy:focus-within .buddy-close,
-.buddy.is-open .buddy-close {
-  opacity: 1;
-  transform: scale(1);
-}
 .buddy-psst {
   position: absolute;
   left: 2px;
@@ -2667,8 +2645,7 @@ dialog::backdrop {
 }
 @media (max-width: 640px) {
   .buddy {
-    top: auto;
-    bottom: 84px;
+    top: calc(var(--head-h) + 14px);
     transform: translateX(calc(100% - 34px));
   }
   .buddy.is-nudge {
