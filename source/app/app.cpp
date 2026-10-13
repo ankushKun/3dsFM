@@ -352,6 +352,7 @@ struct App::State {
         bool charging = false;
         int wifi = 0;
         bool headphones = false;
+        int64_t sdFree = -1; // asked for once a second, not once per row
     } status;
     void refreshStatus()
     {
@@ -360,6 +361,7 @@ struct App::State {
         status.charging = platform::charging();
         status.wifi = platform::wifiStrength();
         status.headphones = audioReady && platform::headphonesPlugged();
+        status.sdFree = platform::sdFreeBytes();
     }
     // The showcase title's fitted size, remembered per title.
     std::string fitTitle;
@@ -387,7 +389,7 @@ struct App::State {
     // the first reads no music files at all.
     core::Library *scanLibrary = nullptr;
     Thread scanThread = nullptr;
-    volatile bool scanDone = false;
+    std::atomic<bool> scanDone{false};
     // What the index on the card knew when the scan started. The library is
     // built from it straight away; the thread uses it to skip known files.
     std::vector<core::Track> scanKnown;
@@ -817,6 +819,19 @@ struct App::State {
             const auto now = byPath.find(nowPath);
             nowTrack = now == byPath.end() ? -1 : now->second;
             allTracksDirty = true;
+            // Whatever is open points into the old library: an artist page
+            // is looked up again by name, search results are run again,
+            // and the cursors come back inside the new counts.
+            if (view == View::Artist) {
+                const int keep = focusArtist;
+                openArtist(artistView);
+                focusArtist = std::min(keep, std::max(0, int(artistTracks.size()) - 1));
+            }
+            if (!searchQuery.empty()) searchResults = library.search(searchQuery);
+            focusSongs = std::min(focusSongs, std::max(0, int(library.tracks().size()) - 1));
+            focusArtists = std::min(focusArtists, std::max(0, int(artistList().size()) - 1));
+            focusSearch = std::min(focusSearch, std::max(0, int(searchResults.size()) - 1));
+            flowPos = float(focusSongs);
             platform::log("scan done: %d tracks, %d albums", int(library.tracks().size()), int(library.albums().size()));
         }
         finishScanThread();
@@ -1237,7 +1252,7 @@ struct App::State {
         rows.push_back({"Library", "", true, false, -1, ""});
         rows.push_back({"Music folder", settings.musicFolder, false, true, -1, "The folder 3dsFM scans for music. Albums are folders of songs; tags are read from MP3, Ogg, Opus and WAV files when they have them."});
         rows.push_back({"Rescan the Music folder", "", false, true, -1, "New files are picked up every time 3dsFM starts; this reads the tags of every file again, for when you have changed them."});
-        rows.push_back({"Storage", plural(songs, "song", "songs") + " · " + gigabytes(platform::sdFreeBytes()) + " free", false, false, -1, "What is on the SD card: the songs in the Music folder and the space left for more."});
+        rows.push_back({"Storage", plural(songs, "song", "songs") + " · " + gigabytes(status.sdFree) + " free", false, false, -1, "What is on the SD card: the songs in the Music folder and the space left for more."});
         return rows;
     }
 
@@ -2874,6 +2889,14 @@ void App::run()
         s_->update();
         if (hidKeysDown() & KEY_START && (hidKeysHeld() & KEY_SELECT)) break;
         s_->updateLid();
+        if (!platform::backlightsLit()) {
+            // Lid closed, music on, screens dark: nothing to draw. Twenty
+            // updates a second keep the queue moving and cost the battery
+            // far less than sixty frames of rendering nobody can see.
+            svcSleepThread(50 * 1000 * 1000);
+            last = svcGetSystemTick();
+            continue;
+        }
         const u64 t1 = svcGetSystemTick();
 
         C3D_FrameBegin(C3D_FRAME_SYNCDRAW);

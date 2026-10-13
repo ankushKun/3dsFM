@@ -4,7 +4,7 @@
 
 <p align="center">
   <b>Your music, in stereo, on the Nintendo 3DS.</b><br>
-  Copy albums to the SD card, close the lid, keep listening.
+  Copy music to the SD card, close the lid, keep listening.
 </p>
 
 <p align="center">
@@ -39,8 +39,8 @@ It shares its toolchain, container build and release pipeline with [3dsDL](https
 <table>
   <tr>
     <td width="50%" valign="top">
-      <h4>📂 Albums from folders</h4>
-      Drop albums under <code>sdmc:/Music</code>, one folder each. Tags come from ID3v1 and ID3v2, Vorbis comments and WAV INFO chunks; untagged files take their title from the file name and their album and artist from the folders. The scan is saved as an index on the card: the next launch shows the whole library from it at once and only reads files that are new.
+      <h4>📂 Music from the SD card</h4>
+      Drop songs under <code>sdmc:/Music</code>, loose or in folders. Tags come from ID3v1 and ID3v2, Vorbis comments and WAV INFO chunks; untagged files take their artist and title from an <code>Artist - Title</code> file name. The scan is saved as an index on the card: the next launch shows the whole library from it at once and only reads files that are new.
     </td>
     <td width="50%" valign="top">
       <h4>🎧 Four formats</h4>
@@ -50,7 +50,7 @@ It shares its toolchain, container build and release pipeline with [3dsDL](https
   <tr>
     <td valign="top">
       <h4>🖼️ Cover art everywhere</h4>
-      A <code>cover</code>, <code>folder</code>, <code>front</code> or <code>album</code> image in the folder, or the first track's embedded picture. Playlists of mixed artists get a 2 × 2 mosaic. The focused album fogs into the top screen.
+      Each song's embedded picture, or a <code>cover</code>, <code>folder</code>, <code>front</code> or <code>album</code> image in its folder. Covers on screen load first, and the focused song fogs into the top screen.
     </td>
     <td valign="top">
       <h4>🌙 Lid closed, music on</h4>
@@ -64,7 +64,7 @@ It shares its toolchain, container build and release pipeline with [3dsDL](https
     </td>
     <td valign="top">
       <h4>🔍 Search and browse</h4>
-      Home, Songs, Artists and Up next sections, album and artist pages, and a search that matches titles, artists and albums as you type.
+      Songs as cover flow, grid or list, artists with their songs, the queue, and a search that matches titles, artists and albums as you type.
     </td>
   </tr>
   <tr>
@@ -95,7 +95,7 @@ It shares its toolchain, container build and release pipeline with [3dsDL](https
 flowchart LR
     A["📂 sdmc:/Music<br>folders of songs"] --> B["Scan on a<br>background thread"]
     B --> C["Tags, durations<br>and cover art"]
-    C --> D["Albums, artists,<br>playlists"]
+    C --> D["Songs, artists,<br>covers"]
     D --> E["▶️ Play queue"]
     E --> F["Decoder on<br>the second core"]
     F --> G["🔊 NDSP, stereo"]
@@ -138,16 +138,16 @@ You can also drop songs straight into the Music folder with no folders at all. T
 - Title, artist, album, album artist, year, track number and cover come from the file's own tags: ID3v2 and ID3v1 in MP3s, Vorbis comments in Ogg and Opus, the INFO chunk in WAVs.
 - When a tag is missing, a file named `Artist - Title.mp3` fills it in; otherwise the file name is the title. Inside folders, the folder is the album and the folder above it the artist.
 - Video-site noise such as `(Official Video)`, `[Lyrics]`, `[HD]` or a trailing video id is taken off titles.
-- A loose song that is the only one of its album is a single, and an artist's singles are gathered into one **Singles** collection with a mosaic of their covers, so 600 downloaded songs become a tile per artist instead of a tile per song.
-- A folder whose songs have different artists is shown as a playlist with a mosaic of its covers.
+- Artists are gathered from the songs' own artist tags, so a flat folder of downloads still gives a proper artist list with a song count each.
 - `._name` resource forks, `.DS_Store` and `Thumbs.db` files that a computer leaves next to the music are deleted during the scan.
 
 The first launch reads every file, which takes a while for a big library; after that the library appears at once from the index on the card and new files are picked up in the background. After editing tags, pick **Rescan the Music folder** in Settings.
 
-1. The bottom screen opens on **Home**, the albums. Tabs along the bottom switch to **Songs**, **Artists** and **Up next**; the round buttons open **Search**, **Now Playing** and **Settings**.
-2. Pick an album, then a song. The top screen shows what is playing, with the art fogged behind it.
-3. Press <kbd>Y</kbd> on a song or album to play it now, add it to Up next, shuffle the album or jump to its artist.
-4. Close the lid. The music keeps playing until the song list ends or you open it again.
+1. The bottom screen opens on **Songs**. The three tabs top left are **Songs**, **Artists** and **Queue**; the round buttons top right open **Search**, **Now Playing** and **Settings**.
+2. Songs has three views, switched with <kbd>X</kbd> or the small button next to the tabs and remembered between launches: cover flow, where the focused cover sits large in the middle and a flick glides through the rest; a grid of covers; and a list.
+3. Artists lists everyone with their song count; open one for their songs with play and shuffle buttons.
+4. Pick a song. The top screen shows what is playing, with the art fogged behind it. <kbd>Y</kbd> on any song plays it now, adds it to the queue or jumps to its artist.
+5. Close the lid. The music keeps playing until the queue ends or you open it again, and the app stops drawing while the screens are dark.
 
 ### Controls
 
@@ -159,8 +159,12 @@ The first launch reads every file, which takes a while for a big library; after 
 | Everywhere | <kbd>L</kbd> / <kbd>R</kbd> | Previous and next song |
 | Everywhere | <kbd>START</kbd> | Play or pause; with <kbd>SELECT</kbd> held, quit |
 | Everywhere | <kbd>SELECT</kbd> | Visualizer |
-| Songs and albums | <kbd>Y</kbd> | Menu: play now, add to up next, shuffle the album, go to the album or artist |
+| Songs | <kbd>X</kbd> | Switch between cover flow, grid and list |
+| Songs | <kbd>Y</kbd> | Menu: play now, add to the queue, go to the artist |
+| Artists | <kbd>Y</kbd> | Shuffle the artist |
+| Queue | <kbd>X</kbd> | Remove the song from the queue |
 | Lists | Drag or flick | Scroll |
+| Cover flow | Drag or flick | Glide through the covers; tap a neighbour to bring it to the front, tap the middle to play |
 | Now Playing | Up / Down | Move the cursor between the buttons and the Up next list |
 | Now Playing | Touch the bar | Seek |
 
@@ -169,9 +173,10 @@ The first launch reads every file, which takes a while for a big library; after 
 | Setting | Default | What it does |
 | --- | --- | --- |
 | Keep playing with the lid closed | On | Closing the lid turns the screens off and keeps the music going. Off pauses, like other homebrew. |
+| Decode on the second core | Off | Runs the audio decoder on the console's second core so the screens never hitch. Takes effect from the next song. |
 | Dark mode | On | Dark screens with light text. Off gives the white HOME Menu look. |
 | Full-screen album art | On | Fills the top screen with the focused album's art. Off keeps the art in a small sleeve, which saves some battery on an Old 3DS. |
-| Music folder | `sdmc:/Music` | Where 3dsFM looks for albums. Typed with the console keyboard. |
+| Music folder | `sdmc:/Music` | Where 3dsFM looks for music. Typed with the console keyboard. |
 | Rescan the Music folder | | New files are picked up every launch; this reads every file's tags again, for when you have edited them. |
 
 Shuffle, repeat and the visualizer style are set from Now Playing and remembered too.
@@ -180,7 +185,7 @@ Shuffle, repeat and the visualizer style are set from Now Playing and remembered
 
 | Path | Contents |
 | --- | --- |
-| `sdmc:/Music/` | Your albums, one folder each (the folder is a setting). |
+| `sdmc:/Music/` | Your music, loose or in folders (the folder is a setting). |
 | `sdmc:/3ds/3dsFM/settings.ini` | Settings, including shuffle, repeat and the visualizer style. |
 | `sdmc:/3ds/3dsFM/library.idx` | The library index: every song's tags and cover file from the last scan. The next launch builds the library from it before reading any music file. Delete it to force a full scan. |
 | `sdmc:/3ds/3dsFM/log.txt` | A log of launches, scans, HOME Menu hand-overs and playback. It is kept across launches so a freeze leaves its last lines behind, and starts over past 256 KB. Attach it when reporting a bug. |

@@ -35,6 +35,7 @@ int wifiStrength();        // 0..3
 bool headphonesPlugged();
 bool lidClosed();
 void setBacklights(bool on);
+bool backlightsLit();
 int64_t sdFreeBytes();
 int64_t sdTotalBytes();
 bool isNew3ds();

@@ -242,6 +242,11 @@ bool lidClosed()
     return state == 0;
 }
 
+bool backlightsLit()
+{
+    return backlightsOn;
+}
+
 void setBacklights(bool on)
 {
     if (on == backlightsOn) return;
