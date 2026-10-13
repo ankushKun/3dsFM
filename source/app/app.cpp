@@ -886,6 +886,17 @@ struct App::State {
         return nullptr;
     }
 
+    // Tells the loader which covers are on screen: the ones drawn in the
+    // last frame that have no picture yet.
+    void reportWantedArt()
+    {
+        std::vector<std::string> keys;
+        for (const auto &entry : art) {
+            if (!entry.second.ready && !entry.second.failed && entry.second.lastUsedFrame + 2 >= frame) keys.push_back(entry.first);
+        }
+        art::setWanted(keys);
+    }
+
     // One finished decode becomes a texture per frame.
     void pollArt()
     {
@@ -1166,64 +1177,41 @@ struct App::State {
         return r;
     }
 
-    std::vector<Row> rowsFor(Section sec)
+    Row artistRow(const ArtistEntry &e)
     {
-        std::vector<Row> rows;
-        if (sec == Section::Songs) {
-            for (int t : allTracks()) rows.push_back(rowForTrack(t));
-        } else if (sec == Section::Artists) {
-            for (const ArtistEntry &e : artistList()) {
-                Row r;
-                r.title = e.name;
-                r.sub = plural(int(e.tracks.size()), "song", "songs");
-                r.track = e.tracks.empty() ? -1 : e.tracks[0];
-                rows.push_back(r);
-            }
-        } else if (sec == Section::Queue) {
-            int n = 1;
-            for (const core::Item *item : queue.upcoming()) {
-                Row r;
-                r.title = item->title;
-                r.sub = item->artist;
-                r.right = item->durationSeconds > 0 ? core::formatClock(item->durationSeconds) : "";
-                r.album = albumIndexOfTrack(item->libraryIndex);
-                r.track = item->libraryIndex;
-                r.playing = n == 1 && item->libraryIndex == nowTrack;
-                rows.push_back(r);
-                ++n;
-            }
-        }
-        return rows;
+        Row r;
+        r.title = e.name;
+        r.sub = plural(int(e.tracks.size()), "song", "songs");
+        r.track = e.tracks.empty() ? -1 : e.tracks[0];
+        return r;
     }
 
-
-    std::vector<Row> artistRows()
+    Row queueRow(const core::Item *item, int position)
     {
-        std::vector<Row> rows;
-        for (int t : artistTracks) {
-            Row r = rowForTrack(t);
-            const core::Track &track = library.tracks()[t];
-            r.sub = track.album.empty() || track.album == track.title ? "Single" : track.album;
-            rows.push_back(r);
-        }
-        return rows;
+        Row r;
+        r.title = item->title;
+        r.sub = item->artist;
+        r.right = item->durationSeconds > 0 ? core::formatClock(item->durationSeconds) : "";
+        r.album = albumIndexOfTrack(item->libraryIndex);
+        r.track = item->libraryIndex;
+        r.playing = position == 0 && item->libraryIndex == nowTrack;
+        return r;
     }
 
-    std::vector<Row> searchRows()
+    Row artistSongRow(int t)
     {
-        std::vector<Row> rows;
-        for (int t : searchResults) {
-            const core::Track &track = library.tracks()[t];
-            Row r;
-            r.title = track.title;
-            r.sub = track.artist + " · " + track.album;
-            r.right = track.durationSeconds > 0 ? core::formatClock(track.durationSeconds) : "";
-            r.album = albumIndexOfTrack(t);
-            r.track = t;
-            r.playing = t == nowTrack;
-            rows.push_back(r);
-        }
-        return rows;
+        Row r = rowForTrack(t);
+        const core::Track &track = library.tracks()[t];
+        r.sub = track.album.empty() || track.album == track.title ? "Single" : track.album;
+        return r;
+    }
+
+    Row searchRow(int t)
+    {
+        Row r = rowForTrack(t);
+        const core::Track &track = library.tracks()[t];
+        r.sub = track.artist + (track.album.empty() || track.album == track.title ? "" : " · " + track.album);
+        return r;
     }
 
     // ---- settings rows ----
@@ -1301,6 +1289,7 @@ struct App::State {
         resumeAfterHandover();
         watchForStall();
         stepScan();
+        reportWantedArt();
         pollArt();
         if (frame % 60 == 1) refreshStatus();
         if (player.finished()) skipNext(false);
@@ -2375,17 +2364,25 @@ struct App::State {
         }
     }
 
-    void drawRows(const std::vector<Row> &rows, int focus, float y0, int visible, bool numbers = false, bool scrollable = true)
+    // A list of any length: only the rows on screen are built, from
+    // rowAt(index), and the covers for a row past each end are asked for
+    // ahead of time so a scroll finds them ready.
+    void drawRows(int total, const std::function<Row(int)> &rowAt, int focus, float y0, int visible, bool numbers = false, bool scrollable = true)
     {
         if (chromeFocus >= 0) focus = -1; // the cursor is up in the top row
         const float px = scrollable ? scrollPx() : 0.0f;
         const int first = int(px / RowStep);
         const float frac = px - first * RowStep;
+        for (int index : {first - 1, first + visible + 1}) {
+            if (index < 0 || index >= total) continue;
+            const Row r = rowAt(index);
+            if (r.track >= 0) trackArt(r.track); else if (r.album >= 0) albumArt(r.album);
+        }
         ui::clipBegin(0.0f, y0 - 1.0f, BotW, visible * RowStep);
         for (int i = 0; i <= visible; ++i) {
             const int index = first + i;
-            if (index >= int(rows.size())) break;
-            const Row &r = rows[index];
+            if (index >= total) break;
+            const Row r = rowAt(index);
             const float y = y0 + i * RowStep - frac;
             const bool focused = index == focus;
             if (focused) {
@@ -2428,14 +2425,19 @@ struct App::State {
             if (!r.right.empty()) ui::text(r.right, RowX + RowW - 8.0f, y + 11.0f, 12.0f, sub, ui::Align::Right);
         }
         ui::clipEnd();
-        if (int(rows.size()) > visible) {
+        if (total > visible) {
             // Scroll hint.
             const float trackH = visible * RowStep - 3.0f;
-            const float thumbH = std::max(10.0f, trackH * visible / rows.size());
-            const float maxPx = float(int(rows.size()) - visible) * RowStep;
+            const float thumbH = std::max(10.0f, trackH * visible / float(total));
+            const float maxPx = float(total - visible) * RowStep;
             const float thumbY = y0 + (trackH - thumbH) * (maxPx > 0.0f ? px / maxPx : 0.0f);
             ui::roundRect(RowX + RowW + 3.0f, thumbY, 2.0f, thumbH, 1.0f, ui::Line);
         }
+    }
+
+    void drawRows(const std::vector<Row> &rows, int focus, float y0, int visible, bool numbers = false, bool scrollable = true)
+    {
+        drawRows(int(rows.size()), [&](int i) { return rows[i]; }, focus, y0, visible, numbers, scrollable);
     }
 
     void drawBottom()
@@ -2476,26 +2478,26 @@ struct App::State {
                 break;
             }
             if (focusSongs >= count) focusSongs = count - 1;
-            if (songsView() == SongsView::List) drawRows(rowsFor(Section::Songs), focusSongs, GridY, SectionRows);
+            if (songsView() == SongsView::List) drawRows(count, [&](int i) { return rowForTrack(all[i]); }, focusSongs, GridY, SectionRows);
             else if (songsView() == SongsView::Grid) drawSongsGrid(all);
             else drawFlow(all);
             break;
         }
         case Section::Artists: {
-            const std::vector<Row> rows = rowsFor(Section::Artists);
-            if (rows.empty()) {
+            const std::vector<ArtistEntry> &artists = artistList();
+            if (artists.empty()) {
                 if (!scanning) drawEmptyCard(Icon::Person, "No artists yet", "Songs name their artists", "in their tags or as Artist - Title.");
             } else {
-                drawRows(rows, focusArtists, GridY, SectionRows);
+                drawRows(int(artists.size()), [&](int i) { return artistRow(artists[i]); }, focusArtists, GridY, SectionRows);
             }
             break;
         }
         case Section::Queue: {
-            const std::vector<Row> rows = rowsFor(Section::Queue);
-            if (rows.empty()) {
+            const std::vector<const core::Item *> upcoming = queue.upcoming();
+            if (upcoming.empty()) {
                 drawEmptyCard(Icon::Queue, "Up next is empty", "Y on any song adds it here.");
             } else {
-                drawRows(rows, focusUpNext, GridY, SectionRows);
+                drawRows(int(upcoming.size()), [&](int i) { return queueRow(upcoming[i], i); }, focusUpNext, GridY, SectionRows);
             }
             break;
         }
@@ -2510,6 +2512,13 @@ struct App::State {
         const float px = scrollPx();
         const int firstRow = int(px / TileStep);
         const float frac = px - firstRow * TileStep;
+        // The row above and the row below the screen, ahead of a scroll.
+        for (int r : {firstRow - 1, firstRow + GridRows + 1}) {
+            for (int c = 0; c < GridCols; ++c) {
+                const int index = r * GridCols + c;
+                if (r >= 0 && index < count) trackArt(all[index]);
+            }
+        }
         ui::clipBegin(0.0f, GridY - 4.0f, BotW, GridRows * TileStep + 1.0f);
         for (int r = 0; r <= GridRows; ++r) {
             const float y = GridY + r * TileStep - frac;
@@ -2543,8 +2552,12 @@ struct App::State {
         const int count = int(all.size());
         if (!flowDragging && !flowCoasting) flowPos += (float(focusSongs) - flowPos) * 0.3f;
         if (std::fabs(flowPos - float(focusSongs)) < 0.01f && !flowDragging && !flowCoasting) flowPos = float(focusSongs);
-        // Far covers first so the near ones paint over them.
+        // Two covers beyond each edge are asked for ahead of a scroll.
         const int centre = int(flowPos + 0.5f);
+        for (int index : {centre - 6, centre - 5, centre + 5, centre + 6}) {
+            if (index >= 0 && index < count) trackArt(all[index]);
+        }
+        // Far covers first so the near ones paint over them.
         for (int ring = 4; ring >= 0; --ring) {
             for (int side = -1; side <= 1; side += 2) {
                 if (ring == 0 && side == 1) continue;
@@ -2620,7 +2633,7 @@ struct App::State {
         ui::text(plural(int(artistTracks.size()), "song", "songs") + " · " + minutesText(seconds), 52.0f, HeaderY + 22.0f, 9.0f, ui::Meta, ui::Align::Left, 190.0f);
         ui::roundButton(265.0f, cy, 11.0f, Icon::Shuffle, false);
         ui::roundButton(297.0f, cy, 13.0f, Icon::Play, true);
-        drawRows(artistRows(), focusArtist, HeaderRowsY, HeaderRows);
+        drawRows(int(artistTracks.size()), [&](int i) { return artistSongRow(artistTracks[i]); }, focusArtist, HeaderRowsY, HeaderRows);
     }
 
     static constexpr float TransportX[5] = {92.0f, 126.0f, 160.0f, 194.0f, 228.0f};
@@ -2676,7 +2689,7 @@ struct App::State {
         else ui::text(searchQuery, 40.0f, 18.0f, 11.0f, ui::Ink, ui::Align::Left, 228.0f);
         ui::icon(Icon::Keyboard, 294.0f, 10.0f + SearchBarH / 2.0f, 13.0f, ui::Meta, ui::Sheet);
         if (!searchResults.empty()) {
-            drawRows(searchRows(), focusSearch, SearchRowsY, SearchRows);
+            drawRows(int(searchResults.size()), [&](int i) { return searchRow(searchResults[i]); }, focusSearch, SearchRowsY, SearchRows);
         } else if (!searchQuery.empty()) {
             ui::text("No matches for \"" + searchQuery + "\"", 160.0f, 120.0f, 11.0f, ui::Meta, ui::Align::Center);
         }

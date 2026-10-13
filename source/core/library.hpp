@@ -137,6 +137,7 @@ private:
     int reused_ = 0;
     std::vector<Track> tracks_;
     std::vector<Album> albums_;
+    std::unordered_map<std::string, int> albumByKey_; // rebuilt by build()
     std::vector<Cover> looseCovers_;
 };
 

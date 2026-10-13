@@ -5,8 +5,10 @@
 
 #include <3ds.h>
 
+#include <algorithm>
 #include <deque>
 #include <mutex>
+#include <set>
 
 #include <jpeglib.h>
 #include <png.h>
@@ -298,7 +300,9 @@ struct Decoded {
 };
 
 LightLock loaderLock;
-std::deque<Request> pendingRequests;
+std::deque<Request> pendingRequests; // oldest at the front
+std::set<std::string> wantedKeys;
+constexpr size_t MaxPending = 48;
 std::deque<Decoded> finishedDecodes;
 Thread loaderThread = nullptr;
 volatile bool loaderRunning = false;
@@ -331,8 +335,15 @@ void loaderMain(void *)
         bool have = false;
         LightLock_Lock(&loaderLock);
         if (!pendingRequests.empty()) {
-            job = pendingRequests.front();
-            pendingRequests.pop_front();
+            // The newest request that is on screen; failing that, the newest.
+            auto pick = pendingRequests.end();
+            for (auto it = pendingRequests.end(); it != pendingRequests.begin();) {
+                --it;
+                if (wantedKeys.count(it->key) != 0) { pick = it; break; }
+            }
+            if (pick == pendingRequests.end()) pick = pendingRequests.end() - 1;
+            job = *pick;
+            pendingRequests.erase(pick);
             have = true;
         }
         LightLock_Unlock(&loaderLock);
@@ -392,7 +403,30 @@ void stopLoader()
 void request(const std::string &key, const std::string &path, bool embedded)
 {
     LightLock_Lock(&loaderLock);
+    for (auto it = pendingRequests.begin(); it != pendingRequests.end(); ++it) {
+        if (it->key == key) {
+            pendingRequests.erase(it);
+            break;
+        }
+    }
     pendingRequests.push_back({key, path, embedded});
+    while (pendingRequests.size() > MaxPending) {
+        // Drop the oldest request that is not on screen.
+        auto victim = pendingRequests.end();
+        for (auto it = pendingRequests.begin(); it != pendingRequests.end(); ++it) {
+            if (wantedKeys.count(it->key) == 0) { victim = it; break; }
+        }
+        if (victim == pendingRequests.end()) break;
+        pendingRequests.erase(victim);
+    }
+    LightLock_Unlock(&loaderLock);
+}
+
+void setWanted(const std::vector<std::string> &keys)
+{
+    LightLock_Lock(&loaderLock);
+    wantedKeys.clear();
+    wantedKeys.insert(keys.begin(), keys.end());
     LightLock_Unlock(&loaderLock);
 }
 

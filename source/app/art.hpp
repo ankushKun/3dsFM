@@ -38,8 +38,13 @@ void startLoader();
 void stopLoader();
 // Keeps the loader idle while the console is away in the HOME Menu or asleep.
 void setPaused(bool paused);
-// `embedded` means the picture is inside the audio file at `path`.
+// `embedded` means the picture is inside the audio file at `path`. A key
+// asked for again moves to the front of the line.
 void request(const std::string &key, const std::string &path, bool embedded);
+// The keys on screen right now. The loader serves these before anything
+// else, newest first, and drops the oldest requests nobody is looking at
+// once the line grows long.
+void setWanted(const std::vector<std::string> &keys);
 // Takes one finished decode, if any. Returns false when nothing is ready.
 bool takeFinished(std::string &key, Image &out);
 

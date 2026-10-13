@@ -215,6 +215,7 @@ void Library::clear()
     reused_ = 0;
     tracks_.clear();
     albums_.clear();
+    albumByKey_.clear();
     looseCovers_.clear();
 }
 
@@ -566,6 +567,8 @@ void Library::build()
         if (x.year != y.year) return x.year < y.year;
         return toLowerAscii(x.title) < toLowerAscii(y.title);
     });
+    albumByKey_.clear();
+    for (int i = 0; i < int(albums_.size()); ++i) albumByKey_[albums_[i].key] = i;
 }
 
 std::vector<std::string> Library::artists() const
@@ -596,10 +599,8 @@ const Album *Library::albumOf(int trackIndex) const
 
 int Library::albumIndex(const std::string &key) const
 {
-    for (int i = 0; i < int(albums_.size()); ++i) {
-        if (albums_[i].key == key) return i;
-    }
-    return -1;
+    const auto it = albumByKey_.find(key);
+    return it == albumByKey_.end() ? -1 : it->second;
 }
 
 std::vector<int> Library::search(const std::string &query) const
