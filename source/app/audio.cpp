@@ -21,7 +21,7 @@ constexpr int RecentSamples = 1024;
 constexpr size_t DecodeStackSize = 192 * 1024;
 
 bool dspReady = false;
-bool loggedCore = false;
+bool useSecondCore = true;
 
 } // namespace
 
@@ -47,6 +47,16 @@ void shutdown()
 bool ready()
 {
     return dspReady;
+}
+
+void setSecondCoreAllowed(bool allowed)
+{
+    useSecondCore = allowed;
+}
+
+bool secondCoreAllowed()
+{
+    return useSecondCore;
 }
 
 struct Player::Impl {
@@ -129,14 +139,13 @@ struct Player::Impl {
         // thread gets far more than the 32 KB it once had.
         s32 prio = 0;
         svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
-        thread = threadCreate(entry, this, DecodeStackSize, prio - 1, 1, false);
+        thread = useSecondCore ? threadCreate(entry, this, DecodeStackSize, prio - 1, 1, false) : nullptr;
         if (thread == nullptr) {
             thread = threadCreate(entry, this, DecodeStackSize, prio - 1, -2, false);
-            if (!loggedCore) platform::log("audio: decoding on the app core");
-        } else if (!loggedCore) {
+            platform::log("audio: decoding on the app core");
+        } else {
             platform::log("audio: decoding on the second core");
         }
-        loggedCore = true;
     }
 
     void stopThread()

@@ -12,6 +12,11 @@ namespace audio {
 bool init(std::string &error);
 void shutdown();
 bool ready();
+// Whether new decode threads may go on the second core. Off, they stay on
+// the app core; used when the second core stops delivering after a HOME
+// Menu visit.
+void setSecondCoreAllowed(bool allowed);
+bool secondCoreAllowed();
 
 class Player {
 public:

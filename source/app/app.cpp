@@ -57,8 +57,9 @@ constexpr float RowStep = 40.0f;
 constexpr float RowX = 10.0f;
 constexpr float RowW = 300.0f;
 constexpr int SectionRows = 5;      // rows visible under the tabs
-constexpr float HeaderH = 48.0f;    // the album and artist header card
-constexpr float HeaderRowsY = 62.0f;
+constexpr float HeaderY = 34.0f;    // the album and artist header card sits under the tabs
+constexpr float HeaderH = 40.0f;
+constexpr float HeaderRowsY = 80.0f;
 constexpr int HeaderRows = 4;
 constexpr float MenuRowH = 31.0f;   // menus keep tighter rows so six items fit
 constexpr float MenuRowStep = 34.0f;
@@ -466,6 +467,15 @@ struct App::State {
         if (!resumePending) return;
         resumePending = false;
         resumeAfterSystem = false;
+        // The system hands the app's share of the second core back as zero
+        // after a suspend, which leaves a decode thread there with no CPU
+        // at all, so the share is asked for again before playback restarts.
+        u32 share = 0;
+        APT_GetAppCpuTimeLimit(&share);
+        const Result set = APT_SetAppCpuTimeLimit(30);
+        u32 after = 0;
+        APT_GetAppCpuTimeLimit(&after);
+        platform::log("apt: second-core share %lu%% on return, set to %lu%% (%08lx)", (unsigned long)share, (unsigned long)after, (unsigned long)set);
         if (nowTrack < 0 || nowTrack >= int(library.tracks().size())) return;
         const core::Track &t = library.tracks()[nowTrack];
         std::string error;
@@ -592,8 +602,8 @@ struct App::State {
     // cursor lands in their content when they open.
     int chromeFocus = -1;
     bool chromeShown() const { return view == View::Section || view == View::NowPlaying || view == View::Album || view == View::Artist; }
-    bool chromeHasTabs() const { return view == View::Section || view == View::NowPlaying; }
-    void enterChrome() { chromeFocus = view == View::Section ? int(section) : view == View::NowPlaying ? 6 : 5; }
+    bool chromeHasTabs() const { return view == View::Section || view == View::NowPlaying || view == View::Album || view == View::Artist; }
+    void enterChrome() { chromeFocus = view == View::Section || view == View::Album || view == View::Artist ? int(section) : view == View::NowPlaying ? 6 : 5; }
     void activateChrome(int i)
     {
         if (i < 5) {
@@ -837,6 +847,40 @@ struct App::State {
     {
         if (trackIndex < 0 || trackIndex >= int(library.tracks().size())) return -1;
         return library.albumIndex(library.tracks()[trackIndex].albumKey);
+    }
+
+    // If a song is meant to be playing but its position has not moved for
+    // three seconds, the decode thread is getting no CPU (the second core
+    // after a HOME Menu visit, typically). Decoding moves to the app core
+    // and the song restarts where it was.
+    double stallPosition = -1.0;
+    int stallFrames = 0;
+    void watchForStall()
+    {
+        if (!player.playing()) {
+            stallFrames = 0;
+            stallPosition = -1.0;
+            return;
+        }
+        const double pos = player.positionSeconds();
+        if (pos != stallPosition) {
+            stallPosition = pos;
+            stallFrames = 0;
+            return;
+        }
+        if (++stallFrames < 180) return;
+        stallFrames = 0;
+        if (nowTrack < 0 || nowTrack >= int(library.tracks().size())) return;
+        platform::log("audio: stalled at %.1f s, moving decoding to the app core", pos);
+        audio::setSecondCoreAllowed(false);
+        const core::Track &t = library.tracks()[nowTrack];
+        std::string error;
+        player.stop();
+        if (player.play(t.path, t.format, error)) {
+            if (pos > 1.0) player.seek(pos);
+        } else {
+            platform::log("audio: restart failed: %s", error.c_str());
+        }
     }
 
     // ---- playback ----
@@ -1216,6 +1260,7 @@ struct App::State {
         ++frame;
         artLoadedThisFrame = false;
         resumeAfterHandover();
+        watchForStall();
         stepScan();
         pollArt();
         if (frame % 60 == 1) refreshStatus();
@@ -1512,7 +1557,7 @@ struct App::State {
     {
         if (albumView < 0 || albumView >= int(library.albums().size())) { view = View::Section; return; }
         const core::Album &a = library.albums()[albumView];
-        if (tapped && chromeTap(touch, false)) return;
+        if (tapped && chromeTap(touch, true)) return;
         if (kd & KEY_B) { back(); return; }
         if (up(k) && focusAlbum == 0) { enterChrome(); return; }
         moveListFocus(focusAlbum, int(a.tracks.size()), HeaderRows, k);
@@ -1520,8 +1565,8 @@ struct App::State {
         if (kd & KEY_Y && !a.tracks.empty()) openTrackMenu(a.tracks[focusAlbum]);
         if (kd & KEY_X) disabled("Saving");
         if (tapped) {
-            if (ui::hit(252.0f, 19.0f, 26.0f, 26.0f, touch.px, touch.py)) playList(a.tracks, 0, true);
-            else if (ui::hit(282.0f, 17.0f, 30.0f, 30.0f, touch.px, touch.py)) playList(a.tracks, 0);
+            if (ui::hit(252.0f, HeaderY + 7.0f, 26.0f, 26.0f, touch.px, touch.py)) playList(a.tracks, 0, true);
+            else if (ui::hit(282.0f, HeaderY + 5.0f, 30.0f, 30.0f, touch.px, touch.py)) playList(a.tracks, 0);
             else {
                 const int row = tappedRow(touch, HeaderRowsY, HeaderRows, int(a.tracks.size()));
                 if (row >= 0) { if (row == focusAlbum) playList(a.tracks, row); else focusAlbum = row; }
@@ -1531,7 +1576,7 @@ struct App::State {
 
     void updateArtist(u32 k, u32 kd, bool tapped, const touchPosition &touch)
     {
-        if (tapped && chromeTap(touch, false)) return;
+        if (tapped && chromeTap(touch, true)) return;
         if (kd & KEY_B) { back(); return; }
         if (up(k) && focusArtist == 0) { enterChrome(); return; }
         moveListFocus(focusArtist, int(artistAlbums.size()), HeaderRows, k);
@@ -2515,30 +2560,32 @@ struct App::State {
 
     void drawBottomAlbum()
     {
-        drawBottomChrome(false);
+        // The tabs and buttons stay on top; the header card sits under them.
+        drawBottomChrome(true);
         if (albumView < 0) return;
         const core::Album &a = library.albums()[albumView];
-        ui::roundRect(10.0f, 10.0f, 300.0f, HeaderH, 8.0f, ui::withAlpha(ui::ShadowBase, 0x14));
-        ui::roundRect(10.0f, 8.0f, 300.0f, HeaderH, 8.0f, ui::Sheet);
-        drawTile(albumView, 16.0f, 14.0f, HeaderH - 12.0f, ui::Sheet);
-        ui::text(a.title, 58.0f, 13.0f, 13.0f, ui::Ink, ui::Align::Left, 180.0f, ui::Weight::Bold);
-        ui::text((a.isPlaylist ? "Playlist" : a.artist) + (a.year.empty() ? "" : " · " + a.year), 58.0f, 32.0f, 9.0f, ui::Meta, ui::Align::Left, 180.0f);
-        ui::roundButton(265.0f, 32.0f, 11.0f, Icon::Shuffle, false);
-        ui::roundButton(297.0f, 32.0f, 13.0f, Icon::Play, true);
+        ui::roundRect(10.0f, HeaderY + 2.0f, 300.0f, HeaderH, 8.0f, ui::withAlpha(ui::ShadowBase, 0x14));
+        ui::roundRect(10.0f, HeaderY, 300.0f, HeaderH, 8.0f, ui::Sheet);
+        drawTile(albumView, 16.0f, HeaderY + 6.0f, HeaderH - 12.0f, ui::Sheet);
+        ui::text(a.title, 52.0f, HeaderY + 4.0f, 12.0f, ui::Ink, ui::Align::Left, 190.0f, ui::Weight::Bold);
+        ui::text((a.isPlaylist ? "Playlist" : a.artist) + (a.year.empty() ? "" : " · " + a.year), 52.0f, HeaderY + 22.0f, 9.0f, ui::Meta, ui::Align::Left, 190.0f);
+        ui::roundButton(265.0f, HeaderY + HeaderH / 2.0f, 11.0f, Icon::Shuffle, false);
+        ui::roundButton(297.0f, HeaderY + HeaderH / 2.0f, 13.0f, Icon::Play, true);
         drawRows(albumRows(albumView), focusAlbum, HeaderRowsY, HeaderRows, true);
     }
 
     void drawBottomArtist()
     {
-        drawBottomChrome(false);
-        ui::roundRect(10.0f, 10.0f, 300.0f, HeaderH, 8.0f, ui::withAlpha(ui::ShadowBase, 0x14));
-        ui::roundRect(10.0f, 8.0f, 300.0f, HeaderH, 8.0f, ui::Sheet);
-        ui::circle(34.0f, 32.0f, 18.0f, ui::BottomBg);
-        ui::icon(Icon::Person, 34.0f, 32.0f, 19.0f, ui::Meta, ui::BottomBg);
-        ui::text(artistView, 58.0f, 13.0f, 13.0f, ui::Ink, ui::Align::Left, 240.0f, ui::Weight::Bold);
+        drawBottomChrome(true);
+        const float cy = HeaderY + HeaderH / 2.0f;
+        ui::roundRect(10.0f, HeaderY + 2.0f, 300.0f, HeaderH, 8.0f, ui::withAlpha(ui::ShadowBase, 0x14));
+        ui::roundRect(10.0f, HeaderY, 300.0f, HeaderH, 8.0f, ui::Sheet);
+        ui::circle(30.0f, cy, 14.0f, ui::BottomBg);
+        ui::icon(Icon::Person, 30.0f, cy, 15.0f, ui::Meta, ui::BottomBg);
+        ui::text(artistView, 52.0f, HeaderY + 4.0f, 12.0f, ui::Ink, ui::Align::Left, 250.0f, ui::Weight::Bold);
         int songs = 0;
         for (int i : artistAlbums) songs += int(library.albums()[i].tracks.size());
-        ui::text(plural(int(artistAlbums.size()), "album", "albums") + " · " + plural(songs, "song", "songs"), 58.0f, 32.0f, 9.0f, ui::Meta);
+        ui::text(plural(int(artistAlbums.size()), "album", "albums") + " · " + plural(songs, "song", "songs"), 52.0f, HeaderY + 22.0f, 9.0f, ui::Meta);
         drawRows(artistRows(), focusArtist, HeaderRowsY, HeaderRows);
     }
 
