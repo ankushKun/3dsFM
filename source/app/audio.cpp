@@ -16,11 +16,14 @@ namespace audio {
 namespace {
 
 constexpr int Channel = 0;
-// Six buffers of 8192 frames: about a second of sound queued ahead of
+// Four buffers of 12288 frames: about a second of sound queued ahead of
 // the DSP, so the card can be busy for most of a second before anything
 // is heard, and each fill is one large decode rather than many small ones.
-constexpr int BufferCount = 6;
-constexpr int FramesPerBuffer = 8192;
+// Never more than four: the DSP holds one playing buffer and a ring of
+// four queued slots, and a fifth queued buffer goes into a slot the DSP
+// may still be reading, which plays the song out of order.
+constexpr int BufferCount = 4;
+constexpr int FramesPerBuffer = 12288;
 constexpr int RecentSamples = 1024;
 constexpr size_t DecodeStackSize = 192 * 1024;
 
