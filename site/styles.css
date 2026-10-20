@@ -433,8 +433,10 @@ symbol .fill {
   text-align: center;
 }
 
-/* "New!" with the release, stuck on at an angle. */
+/* "New!" with the release, and the download count beside it, stuck on at
+   an angle. */
 .sticker {
+  --tilt: -4deg;
   display: inline-block;
   margin: 0 0 16px;
   padding: 5px 15px 4px;
@@ -445,7 +447,29 @@ symbol .fill {
   color: #fff;
   background: linear-gradient(#ff7b7f, var(--a));
   box-shadow: 0 3px 0 #b8343a, 0 8px 16px rgba(200, 50, 60, 0.22);
-  transform: rotate(-4deg);
+  transform: rotate(var(--tilt));
+}
+
+.sticker-count {
+  --tilt: 3deg;
+  background: linear-gradient(#5fcff5, #0f98cf);
+  box-shadow: 0 3px 0 #086a96, 0 8px 16px rgba(11, 134, 189, 0.22);
+}
+
+.sticker:not([hidden]) + .sticker {
+  margin-left: 10px;
+}
+
+/* Small enough on the narrowest phones that both still share a line. */
+@media (max-width: 360px) {
+  .sticker {
+    padding: 4px 11px 3px;
+    font-size: 13px;
+  }
+
+  .sticker:not([hidden]) + .sticker {
+    margin-left: 6px;
+  }
 }
 
 .hero h1 {
@@ -2275,10 +2299,10 @@ dialog::backdrop {
 
 @keyframes sticker-in {
   from {
-    transform: rotate(-16deg) scale(0);
+    transform: rotate(calc(var(--tilt) * 4)) scale(0);
   }
   to {
-    transform: rotate(-4deg) scale(1);
+    transform: rotate(var(--tilt)) scale(1);
   }
 }
 

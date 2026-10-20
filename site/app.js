@@ -142,6 +142,58 @@
       });
   }
 
+  // Downloads of every file in every release, pre-releases included: the
+  // same sum as the shields.io badge in the README. The total is kept for an
+  // hour, so a returning visitor sees it at once and the page spends as few
+  // of GitHub's 60 requests an hour as it can.
+  function showDownloads() {
+    var targets = document.querySelectorAll("[data-downloads]");
+    if (!targets.length || !window.fetch) return;
+    var key = "downloads:" + REPO;
+    var show = function (total) {
+      targets.forEach(function (element) {
+        element.textContent = total.toLocaleString("en") + (total === 1 ? " download" : " downloads");
+        element.hidden = false;
+      });
+    };
+    var saved = null;
+    try {
+      saved = JSON.parse(localStorage.getItem(key));
+    } catch (error) {}
+    if (saved && typeof saved.total === "number") {
+      show(saved.total);
+      if (Date.now() - saved.at < 60 * 60 * 1000) return;
+    }
+    var total = 0;
+    var page = function (number) {
+      return fetch("https://api.github.com/repos/" + REPO + "/releases?per_page=100&page=" + number, {
+        headers: { Accept: "application/vnd.github+json" }
+      })
+        .then(function (response) {
+          if (!response.ok) throw new Error("HTTP " + response.status);
+          return response.json();
+        })
+        .then(function (releases) {
+          releases.forEach(function (release) {
+            (release.assets || []).forEach(function (asset) {
+              total += asset.download_count || 0;
+            });
+          });
+          if (releases.length === 100) return page(number + 1);
+        });
+    };
+    page(1)
+      .then(function () {
+        show(total);
+        try {
+          localStorage.setItem(key, JSON.stringify({ total: total, at: Date.now() }));
+        } catch (error) {}
+      })
+      .catch(function () {
+        // Keep the saved count, or nothing, when GitHub can't be reached.
+      });
+  }
+
   function copyText(text, button) {
     var label = button.querySelector("span");
     var original = label ? label.textContent : "";
@@ -834,6 +886,7 @@
   }
 
   showRelease();
+  showDownloads();
   setUpCopyButtons();
   setUpScreenScale();
   setUpDeviceDemo();
