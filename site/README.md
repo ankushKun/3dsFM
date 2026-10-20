@@ -46,3 +46,16 @@ install render's LED position (`.led`, in its 736 × 736 pixel space).
 
 To preview locally, run `python3 -m http.server -d site` and open
 http://localhost:8000.
+
+## Analytics
+
+`app.js` starts with the same PostHog setup as the rest of ankush.one: the same project, sent through
+the first-party proxy at `p1.ankush.one`, with autocapture, heatmaps, Web Vitals, error capture and
+session replay (console and network calls included). Every event carries `site: "3dsFM"`, and since the
+pages share the ankush.one origin, a visitor keeps one id and one replay session across this site, the
+portfolio and the other project pages. Nothing loads on localhost or when the browser sends Global
+Privacy Control.
+
+Custom events go through `window.track(name, props)`: `install_method`, `feature_viewed`,
+`faq_opened`, `menu_sounds`, `download_link_copied` and `buddy_opened` (the 3dsDL card). What the
+site sends is listed on https://ankush.one/privacy/, so update that page when adding an event.
